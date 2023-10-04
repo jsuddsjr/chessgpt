@@ -12,9 +12,13 @@ Django = "^4.2.5"
 django-ninja = "^0.22.2"
 pytest = "^7.4.2"
 mypy = "^1.5.1"
+python-dotenv = "^1.0.0"
 openai = "^0.28.1"
 
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 120
