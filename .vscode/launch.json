@@ -9,7 +9,7 @@
             "name": "Launch Edge",
             "request": "launch",
             "type": "msedge",
-            "url": "http://localhost:3000",
+            "url": "http://localhost:8000",
             "webRoot": "${workspaceFolder}",
             "runtimeArgs": [
                 "--inprivate",
@@ -18,15 +18,23 @@
             "preLaunchTask": "runserver (Django)"
         },
         {
-            "name": "Python: Django",
+            "name": "Launch Django",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}\\manage.py",
+            "program": "${workspaceRoot}/manage.py",
+            "python": "${command:python.interpreterPath}",
             "args": [
                 "runserver"
             ],
             "django": true,
-            "justMyCode": false
+            "justMyCode": false,
+            "autoReload": {
+                "enable": true,
+                "include": [
+                    "${workspaceRoot}/templates/**/*",
+                    "${workspaceRoot}/static/**/*"
+                ]
+            }
         }
     ]
 }

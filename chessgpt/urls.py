@@ -18,9 +18,11 @@ from django.contrib import admin
 from django.shortcuts import redirect
 from django.urls import path
 from .api import api
+from .views import hello_there
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', api.urls),
+    path("hello/<name>", hello_there, name="hello_there"),
     path('', lambda request: redirect('api/docs')),
 ]
