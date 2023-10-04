@@ -1,0 +1,12 @@
+{
+    "recommendations": [
+        "batisteo.vscode-django",
+        "formulahendry.auto-rename-tag",
+        "junstyle.vscode-django-support",
+        "ms-python.isort",
+        "streetsidesoftware.code-spell-checker",
+        "tamasfe.even-better-toml",
+        "zaczero.bootstrap-v4-snippets",
+        "marclipovsky.string-manipulation"
+    ]
+}

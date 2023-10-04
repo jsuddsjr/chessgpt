@@ -1,0 +1,137 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "runserver (Django)",
+            "type": "process",
+            "command": ".venv/Scripts/python.exe",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "isBackground": true,
+            "problemMatcher": [],
+            "args": [
+                "manage.py",
+                "runserver",
+                "--force-color"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "test (Django)",
+            "type": "process",
+            "command": ".venv/Scripts/python.exe",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "args": [
+                "manage.py",
+                "test",
+                "--force-color"
+            ],
+            "group": "test"
+        },
+        {
+            "label": "startapp (Django)",
+            "type": "process",
+            "command": ".venv/Scripts/python.exe",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "args": [
+                "manage.py",
+                "startapp",
+                "${input:appName}"
+            ],
+            "group": "test"
+        },
+        {
+            "label": "makemessages (Django)",
+            "type": "process",
+            "command": ".venv/Scripts/python.exe",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "args": [
+                "manage.py",
+                "makemessages",
+                "--all",
+                "-e html,py"
+            ]
+        },
+        {
+            "label": "command (Django)",
+            "type": "process",
+            "command": ".venv/Scripts/python.exe",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "args": [
+                "manage.py",
+                "${input:command}"
+            ],
+            "group": "test"
+        },
+        {
+            "label": "help (Django)",
+            "type": "process",
+            "command": ".venv/Scripts/python.exe",
+            "args": [
+                "manage.py",
+                "help",
+                "${input:command}"
+            ],
+            "group": "test"
+        },
+    ],
+    "inputs": [
+        {
+            "id": "appName",
+            "type": "promptString",
+            "description": "Enter the new app name:"
+        },
+        {
+            "id": "command",
+            "type": "pickString",
+            "description": "Select a command.",
+            "options": [
+                "check",
+                "compilemessages",
+                "createcachetable",
+                "dbshell",
+                "diffsettings",
+                "dumpdata",
+                "flush",
+                "inspectdb",
+                "loaddata",
+                "makemessages",
+                "makemigrations",
+                "migrate",
+                "optimizemigration",
+                "sendtestemail",
+                "shell",
+                "showmigrations",
+                "sqlflush",
+                "sqlmigrate",
+                "sqlsequencereset",
+                "squashmigrations",
+                "startapp",
+                "startproject",
+                "test",
+                "testserver",
+                "collectstatic",
+                "findstatic",
+                "runserver",
+                "clearsessions",
+                "remove_stale_contenttypes",
+                "changepassword",
+                "createsuperuser",
+            ]
+        }
+    ]
+}

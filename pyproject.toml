@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "chessgpt"
+version = "0.1.0"
+description = "Let's play chess with ChatGPT."
+authors = ["John Sudds <jsuddsjr@users.noreply.github.com>"]
+license = "ISC"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+Django = "^4.2.5"
+django-ninja = "^0.22.2"
+pytest = "^7.4.2"
+mypy = "^1.5.1"
+openai = "^0.28.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
