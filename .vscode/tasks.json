@@ -11,7 +11,23 @@
                 "cwd": "${workspaceFolder}"
             },
             "isBackground": true,
-            "problemMatcher": [],
+            "problemMatcher": {
+                "owner": "python",
+                "fileLocation": [
+                    "relative",
+                    "${workspaceFolder}"
+                ],
+                "pattern": {
+                    "regexp": "^\\s*File \"(...*?)\", line ([0-9]*)",
+                    "file": 1,
+                    "line": 2
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^\\s*Performing system checks...",
+                    "endsPattern": "^\\s*System check identified no issues \\(0 silenced\\)."
+                }
+            },
             "args": [
                 "manage.py",
                 "runserver",
