@@ -3,19 +3,30 @@ from .models import Game, Move, ChatHistory
 from django.contrib.auth.models import User
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from ninja import ModelSchema, Schema, NinjaAPI
 from typing import List
 
+import chess
+import chess.pgn
 import json
 import openai
 import requests
 
 api = NinjaAPI(title="ChessGPT API", description="API for ChessGPT.", version="0.1.0")
 
+empty_date = "????.??.??"
+
 
 class GameRequestModel(Schema):
     owner_id: int = None
-    name: str = "Untitled Game"
+    white: str = "White"
+    black: str = "Black"
+    event: str = "Casual Game"
+    date: str = empty_date
+    round: int = 1
+    outcome: str = "*"
+    fen: str = chess.STARTING_FEN
 
 
 class GameModelSchema(ModelSchema):
@@ -34,6 +45,10 @@ class ChatHistoryModelSchema(ModelSchema):
     class Config:
         model = ChatHistory
         model_fields = "__all__"
+
+
+class ErrorSchema(Schema):
+    error: str = "Error"
 
 
 @api.get("/hello")
@@ -55,30 +70,62 @@ def get_chess_games(request):
     return games
 
 
-@api.post("/chess", response=GameModelSchema, summary="Create a new chess game.")
-async def post_chess_game(request, name: str, payload: GameRequestModel):
+@api.post(
+    "/chess",
+    response={200: GameModelSchema, 400: ErrorSchema},
+    summary="Create a new chess game.",
+)
+async def post_chess_game(request, payload: GameRequestModel, event: str = None):
     # From query params.
-    if name:
-        payload.name = name
+    if event:
+        payload.event = event
 
     if payload.owner_id:
         payload.owner = get_object_or_404(User, id=payload.owner_id)
     else:
         payload.owner_id = None
 
-    game = await Game.objects.acreate(**payload.dict())
-    await ChatHistory.objects.acreate(
-        game=game, role="system", content="You are a chess master."
-    )
-    await ChatHistory.objects.acreate(
-        game=game, role="user", content="White, what's your first move?"
-    )
-    await ChatHistory.objects.acreate(
-        game=game,
-        role="assistant",
-        content="Return a single move in chess notation.",
-    )
-    return game
+    try:
+        if (
+            (payload.date == empty_date)
+            or (payload.date == "")
+            or (payload.date == None)
+        ):
+            payload.date = timezone.now().strftime("%Y.%m.%d")
+
+        pgn = chess.pgn.Game(
+            [
+                ("Event", payload.event),
+                ("Date", payload.date),
+                ("White", payload.white),
+                ("Black", payload.black),
+                ("Round", payload.round),
+                ("Result", payload.outcome),
+            ]
+        )
+
+        if payload.fen:
+            pgn.setup(payload.fen)
+
+        exporter = chess.pgn.StringExporter(headers=True)
+
+        game = await Game.objects.acreate(pgn=pgn.accept(exporter), **payload.dict())
+
+        await ChatHistory.objects.acreate(
+            game=game, role="system", content="You are a chess master."
+        )
+        await ChatHistory.objects.acreate(
+            game=game, role="user", content="White, what's your first move?"
+        )
+        await ChatHistory.objects.acreate(
+            game=game,
+            role="assistant",
+            content="Return a single move in chess notation.",
+        )
+        return game
+
+    except Exception as e:
+        return 400, {"error": str(e)}
 
 
 @api.get("/chess/{game_id}", response=GameModelSchema)

@@ -8,10 +8,11 @@ class Game(models.Model):
     event = models.CharField(max_length=100, null=True, blank=True)
     white = models.CharField(max_length=100, null=True, blank=True)
     black = models.CharField(max_length=100, null=True, blank=True)
+    round = models.IntegerField(default=1, validators=[MinValueValidator(1)])
     outcome = models.CharField(max_length=100, null=True, blank=True)
     fen = models.CharField(max_length=100, help_text="Most recent FEN.")
     pgn = models.TextField(null=True, blank=True, help_text="PGN of game.")
-    created = models.DateTimeField(auto_now_add=True)
+    date = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
 
     def __str__(self):
