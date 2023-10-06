@@ -1,61 +1,35 @@
 from django.db import models
+from django.core.validators import MinValueValidator, MaxValueValidator
 from django.contrib.auth.models import User
 
 
 class Game(models.Model):
-    GAME_RESULTS = [(1, "1-0"), (2, "0-1"), (3, "1/2-1/2")]
     owner = models.ForeignKey(User, null=True, on_delete=models.CASCADE)
-    name = models.CharField(
-        max_length=200, null=True, blank=True, help_text="Event name"
-    )
-    result = models.IntegerField(
-        choices=GAME_RESULTS, null=True, help_text="Game result"
-    )
-    date = models.DateTimeField(auto_now_add=True)
+    event = models.CharField(max_length=100, null=True, blank=True)
+    white = models.CharField(max_length=100, null=True, blank=True)
+    black = models.CharField(max_length=100, null=True, blank=True)
+    outcome = models.CharField(max_length=100, null=True, blank=True)
+    fen = models.CharField(max_length=100, help_text="Most recent FEN.")
+    pgn = models.TextField(null=True, blank=True, help_text="PGN of game.")
+    created = models.DateTimeField(auto_now_add=True)
+    modified = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return self.name
+        return self.event
 
 
 class Move(models.Model):
-    PLAYER_COLORS = [(1, "white"), (2, "black")]
-    CHECK_TYPES = [("+", "check"), ("#", "checkmate")]
-    PIECE_TYPES = [
-        ("K", "king"),
-        ("Q", "queen"),
-        ("R", "rook"),
-        ("B", "bishop"),
-        ("N", "knight"),
-        ("", "pawn"),
-    ]
-    CASTLE_TYPES = [("O-O", "kingside"), ("O-O-O", "queenside")]
     game = models.ForeignKey(Game, on_delete=models.CASCADE)
-    piece = models.CharField(max_length=1, choices=PIECE_TYPES)
-    capture = models.BooleanField(default=False)
-    source = models.CharField(max_length=2)
-    destination = models.CharField(max_length=2)
-    checkType = models.CharField(
-        max_length=1, choices=CHECK_TYPES, null=True, blank=True
+    ply = models.IntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(100)],
+        help_text="Half-play count (even = white, odd = black).",
     )
-    promotion = models.CharField(
-        max_length=1, choices=PIECE_TYPES, null=True, blank=True
-    )
-    castle = models.CharField(max_length=5, choices=CASTLE_TYPES, null=True, blank=True)
-    comment = models.CharField(max_length=200, null=True, blank=True)
-    color = models.IntegerField(choices=PLAYER_COLORS)
-    elapsed = models.IntegerField(default=0, help_text="Time elapsed in seconds")
-    created = models.DateTimeField(auto_now_add=True)
+    uci = models.CharField(max_length=10, help_text="Universal Chess Interface.")
+    san = models.CharField(max_length=10, help_text="Standard Algebraic Notation.")
+    fen = models.CharField(max_length=100, help_text="FEN prior to move.")
 
     def __str__(self):
-        if self.castle:
-            return self.castle
-
-        captured = "x" if self.capture else ""
-        notes = f" {{{self.comment}}}" if self.comment else ""
-        return f"{self.piece}{self.source}{captured}{self.destination}{self.checkType}{notes}"
-
-    class Meta:
-        ordering = ["-created"]
+        return self.san
 
 
 class ChatHistory(models.Model):
@@ -75,6 +49,3 @@ class ChatHistory(models.Model):
         if self.role == "function":
             return {"role": "function", "name": self.fname, "content": self.content}
         return {"role": self.role, "content": self.content}
-
-    class Meta:
-        ordering = ["id"]

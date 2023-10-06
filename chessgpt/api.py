@@ -1,11 +1,14 @@
-from django.shortcuts import get_object_or_404
+from .models import Game, Move, ChatHistory
+
+from django.contrib.auth.models import User
 from django.http import HttpResponseRedirect
+from django.shortcuts import get_object_or_404
 from ninja import ModelSchema, Schema, NinjaAPI
 from typing import List
-from .models import Game, Move, ChatHistory
+
+import json
 import openai
 import requests
-import json
 
 api = NinjaAPI(title="ChessGPT API", description="API for ChessGPT.", version="0.1.0")
 
@@ -27,6 +30,12 @@ class MoveModelSchema(ModelSchema):
         model_fields = "__all__"
 
 
+class ChatHistoryModelSchema(ModelSchema):
+    class Config:
+        model = ChatHistory
+        model_fields = "__all__"
+
+
 @api.get("/hello")
 async def hello_world(request):
     completion = openai.Completion.acreate(
@@ -36,29 +45,61 @@ async def hello_world(request):
     return completion.choices[0].text
 
 
-@api.get("/chess", response=List[GameModelSchema])
-async def get_chess_games(request):
-    games = await Game.objects.aget()
+@api.get(
+    "/chess",
+    response={200: List[GameModelSchema]},
+    summary="Get a list of chess games.",
+)
+def get_chess_games(request):
+    games = Game.objects.all()
     return games
+
+
+@api.post("/chess", response=GameModelSchema, summary="Create a new chess game.")
+async def post_chess_game(request, name: str, payload: GameRequestModel):
+    # From query params.
+    if name:
+        payload.name = name
+
+    if payload.owner_id:
+        payload.owner = get_object_or_404(User, id=payload.owner_id)
+    else:
+        payload.owner_id = None
+
+    game = await Game.objects.acreate(**payload.dict())
+    await ChatHistory.objects.acreate(
+        game=game, role="system", content="You are a chess master."
+    )
+    await ChatHistory.objects.acreate(
+        game=game, role="user", content="White, what's your first move?"
+    )
+    await ChatHistory.objects.acreate(
+        game=game,
+        role="assistant",
+        content="Return a single move in chess notation.",
+    )
+    return game
 
 
 @api.get("/chess/{game_id}", response=GameModelSchema)
 def get_chess_game(request, game_id):
+    """Get a chess game by ID."""
     game = get_object_or_404(Game, id=game_id)
     return game
 
 
-@api.post("/chess/{game_id}/next")
+@api.post("/chess/{game_id}/move", response=MoveModelSchema)
 def post_chess_next(request, game_id) -> dict:
+    """Make the next move in a chess game."""
     game = get_object_or_404(Game, id=game_id)
     messages = ChatHistory.objects.filter(game=game)
+
     completion = openai.ChatCompletion.create(
         model="gpt-3.5-turbo-0613",
         messages=[x.toMessage() for x in messages],
         functions=[
             {
-                "name": "get_chess_move",
-                "description": "Gets next move in algebraic notation.",
+                "name": "get_next_move",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -88,25 +129,6 @@ def post_chess_next_move(request, game_id, move) -> HttpResponseRedirect:
     return requests.post(url).json()
 
 
-@api.post("/chess", response=GameModelSchema)
-async def post_chess_game(request, payload: GameRequestModel):
-    game = await Game.objects.acreate(**payload.dict())
-
-    await ChatHistory.objects.acreate(
-        game=game, role="system", content="You are a chess player."
-    )
-    await ChatHistory.objects.acreate(
-        game=game, role="user", content="You are white. What's your first move?"
-    )
-    await ChatHistory.objects.acreate(
-        game=game,
-        role="user",
-        content="Return a single move in algebraic notation.",
-    )
-
-    return game
-
-
 @api.get("/chess/{game_id}/moves", response=List[MoveModelSchema])
 def get_chess_game_moves(request, game_id):
     game = get_object_or_404(Game, id=game_id)
@@ -127,3 +149,9 @@ def post_chess_game_move(request, game_id, payload: MoveModelSchema):
     payload.game = game
     move = Move.objects.create(**payload.dict())
     return move
+
+
+@api.get("/chat/{game_id}", response=List[ChatHistoryModelSchema])
+def get_chat_history(request, game_id):
+    game = get_object_or_404(Game, id=game_id)
+    return ChatHistory.objects.filter(game=game)
