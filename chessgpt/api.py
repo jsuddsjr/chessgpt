@@ -42,9 +42,13 @@ class MoveModelSchema(ModelSchema):
 
 
 class ChatHistoryModelSchema(ModelSchema):
+    role: str = "user"
+    fname: str = None
+    content: str = "Black to d5."
+
     class Config:
         model = ChatHistory
-        model_fields = "__all__"
+        model_fields = ["role", "fname", "content"]
 
 
 class ErrorSchema(Schema):
@@ -115,13 +119,19 @@ async def post_chess_game(request, payload: GameRequestModel, event: str = None)
             game=game, role="system", content="You are a chess master."
         )
         await ChatHistory.objects.acreate(
-            game=game, role="user", content="White, what's your first move?"
+            game=game,
+            role="user",
+            content="Respond in Standard Algebraic Notation (SAN) using 'suggest_next_move' function.",
+        )
+        await ChatHistory.objects.acreate(
+            game=game, role="assistant", content="{'san': 'e4'}"
         )
         await ChatHistory.objects.acreate(
             game=game,
-            role="assistant",
-            content="Return a single move in chess notation.",
+            role="user",
+            content="Let's start a new game. You are playing white. It's your turn.",
         )
+
         return game
 
     except Exception as e:
@@ -133,39 +143,6 @@ def get_chess_game(request, game_id):
     """Get a chess game by ID."""
     game = get_object_or_404(Game, id=game_id)
     return game
-
-
-@api.post("/chess/{game_id}/move", response=MoveModelSchema)
-def post_chess_next(request, game_id) -> dict:
-    """Make the next move in a chess game."""
-    game = get_object_or_404(Game, id=game_id)
-    messages = ChatHistory.objects.filter(game=game)
-
-    completion = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo-0613",
-        messages=[x.toMessage() for x in messages],
-        functions=[
-            {
-                "name": "get_next_move",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "move": {
-                            "type": "string",
-                            "description": "The move, e.g. 'e4' or 'Nf3'",
-                        },
-                    },
-                    "required": ["move"],
-                },
-            }
-        ],
-        function_call="auto",
-    )
-    move = completion.choices[0].message.function_call.arguments
-    ChatHistory.objects.create(
-        game=game, role="function", fname="get_chess_move", content=move
-    )
-    return json.loads(move)
 
 
 @api.post("/chess/{game_id}/next/{move}")
@@ -202,3 +179,51 @@ def post_chess_game_move(request, game_id, payload: MoveModelSchema):
 def get_chat_history(request, game_id):
     game = get_object_or_404(Game, id=game_id)
     return ChatHistory.objects.filter(game=game)
+
+
+@api.post("/chat/{game_id}", response=ChatHistoryModelSchema)
+def post_chat_history(request, game_id, payload: ChatHistoryModelSchema):
+    game = get_object_or_404(Game, id=game_id)
+    return ChatHistory.objects.create(game=game, **payload.dict())
+
+
+@api.get("/chat/{game_id}/suggest")
+def post_chess_next(request, game_id):
+    """Suggest the next move in a chess game."""
+    game = get_object_or_404(Game, id=game_id)
+    messages = ChatHistory.objects.filter(game=game)
+
+    completion = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo-0613",
+        messages=[x.toMessage() for x in messages],
+        temperature=1.1,
+        functions=[
+            {
+                "name": "suggest_next_chess_move",
+                "description": "Suggest the next move in a chess game, such as 'e4' or 'Nf3'.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "move": {
+                            "type": "string",
+                            "description": "Standard Algebraic Notation (SAN) for the next move.",
+                        },
+                    },
+                    "required": ["move"],
+                },
+            }
+        ],
+        function_call={"name": "suggest_next_chess_move"},
+    )
+
+    message = completion.choices[0].message
+
+    if hasattr(message, "function_call"):
+        fn = message.function_call
+        ChatHistory.objects.create(
+            game=game, role="assistant", fname=fn.name, content=fn.arguments
+        )
+        return json.loads(fn.arguments)
+    else:
+        ChatHistory.objects.create(game=game, role="assistant", content=message.content)
+        return message.content
