@@ -1,7 +1,7 @@
 from .models import Game, Move, ChatHistory
-
+from asgiref.sync import sync_to_async
 from django.contrib.auth.models import User
-from django.http import HttpResponseRedirect
+from django.http import HttpResponseRedirect, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import ModelSchema, Schema, NinjaAPI
@@ -9,13 +9,14 @@ from typing import List
 
 import chess
 import chess.pgn
-import json
+import io
 import openai
 import requests
 
 api = NinjaAPI(title="ChessGPT API", description="API for ChessGPT.", version="0.1.0")
 
 empty_date = "????.??.??"
+exporter = chess.pgn.StringExporter(headers=False, variations=False, comments=False)
 
 
 class GameRequestModel(Schema):
@@ -43,29 +44,38 @@ class MoveModelSchema(ModelSchema):
 
 class ChatHistoryModelSchema(ModelSchema):
     role: str = "user"
-    fname: str = None
     content: str = "Black to d5."
 
     class Config:
         model = ChatHistory
-        model_fields = ["role", "fname", "content"]
+        model_fields = ["role", "content"]
 
 
 class ErrorSchema(Schema):
     error: str = "Error"
 
 
-@api.get("/hello")
+@api.get("/hello", tags=["hello"], response={200: str}, summary="Hello world!")
 async def hello_world(request):
-    completion = openai.Completion.acreate(
+    completion = await openai.ChatCompletion.acreate(
         model="gpt-3.5-turbo-0613",
-        messages=[{"role": "user", "content": "Warm greetings to you!"}],
+        temperature=0.8,
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a friendly chess player.",
+            },
+            {"role": "user", "content": "Hello!"},
+        ],
     )
-    return completion.choices[0].text
+
+    content = completion.choices[0].message.content
+    return content
 
 
 @api.get(
     "/chess",
+    tags=["games"],
     response={200: List[GameModelSchema]},
     summary="Get a list of chess games.",
 )
@@ -76,6 +86,7 @@ def get_chess_games(request):
 
 @api.post(
     "/chess",
+    tags=["games"],
     response={200: GameModelSchema, 400: ErrorSchema},
     summary="Create a new chess game.",
 )
@@ -85,7 +96,9 @@ async def post_chess_game(request, payload: GameRequestModel, event: str = None)
         payload.event = event
 
     if payload.owner_id:
-        payload.owner = get_object_or_404(User, id=payload.owner_id)
+        payload.owner = await sync_to_async(get_object_or_404)(
+            User, id=payload.owner_id
+        )
     else:
         payload.owner_id = None
 
@@ -93,43 +106,19 @@ async def post_chess_game(request, payload: GameRequestModel, event: str = None)
         if (
             (payload.date == empty_date)
             or (payload.date == "")
-            or (payload.date == None)
+            or (payload.date is None)
         ):
             payload.date = timezone.now().strftime("%Y.%m.%d")
 
-        pgn = chess.pgn.Game(
-            [
-                ("Event", payload.event),
-                ("Date", payload.date),
-                ("White", payload.white),
-                ("Black", payload.black),
-                ("Round", payload.round),
-                ("Result", payload.outcome),
-            ]
-        )
+        game = await Game.objects.acreate(pgn="*", **payload.dict())
 
-        if payload.fen:
-            pgn.setup(payload.fen)
-
-        exporter = chess.pgn.StringExporter(headers=True)
-
-        game = await Game.objects.acreate(pgn=pgn.accept(exporter), **payload.dict())
-
-        await ChatHistory.objects.acreate(
-            game=game, role="system", content="You are a chess master."
-        )
         await ChatHistory.objects.acreate(
             game=game,
-            role="user",
-            content="Respond in Standard Algebraic Notation (SAN) using 'suggest_next_move' function.",
+            role="system",
+            content="Generate chess moves in UCI format, e.g. 'e2e4' or 'e7e8q'. No other text is allowed.",
         )
         await ChatHistory.objects.acreate(
-            game=game, role="assistant", content="{'san': 'e4'}"
-        )
-        await ChatHistory.objects.acreate(
-            game=game,
-            role="user",
-            content="Let's start a new game. You are playing white. It's your turn.",
+            game=game, role="user", content="White, what's your opening move?"
         )
 
         return game
@@ -138,92 +127,164 @@ async def post_chess_game(request, payload: GameRequestModel, event: str = None)
         return 400, {"error": str(e)}
 
 
-@api.get("/chess/{game_id}", response=GameModelSchema)
+@api.get(
+    "/chess/{game_id}",
+    tags=["games"],
+    response=GameModelSchema,
+    summary="Get a chess game by ID.",
+)
 def get_chess_game(request, game_id):
     """Get a chess game by ID."""
     game = get_object_or_404(Game, id=game_id)
     return game
 
 
-@api.post("/chess/{game_id}/next/{move}")
-def post_chess_next_move(request, game_id, move) -> HttpResponseRedirect:
-    game = get_object_or_404(Game, id=game_id)
-    ChatHistory.objects.create(game=game, role="user", content=move)
-    url = request.build_absolute_uri(f"/api/chess/{game_id}/next")
-    return requests.post(url).json()
+@api.get(
+    "/chess/{game_id}/pgn",
+    tags=["pgn"],
+    summary="Get a PGN file for this game.",
+)
+async def get_chess_game_pgn(request, game_id: int) -> HttpResponse:
+    """Get a chess game by ID."""
+    game = await sync_to_async(get_object_or_404)(Game, id=game_id)
+
+    chessGame = chess.pgn.read_game(io.StringIO(game.pgn))
+    chessGame.headers = chess.pgn.Headers(
+        [
+            ("Event", game.event),
+            ("Date", game.date.strftime("%Y.%m.%d")),
+            ("White", game.white),
+            ("Black", game.black),
+            ("Round", game.round),
+            ("Result", game.outcome),
+        ]
+    )
+    return HttpResponse(str(chessGame), content_type="text/plain")
 
 
-@api.get("/chess/{game_id}/moves", response=List[MoveModelSchema])
+@api.post(
+    "/chess/{game_id}/move/{move}",
+    tags=["moves"],
+    response={200: MoveModelSchema, 400: ErrorSchema},
+    summary="Make a move in a chess game.",
+)
+async def post_chess_next_move(request, game_id: int, move: str):
+    game = await sync_to_async(get_object_or_404)(Game, id=game_id)
+    # url = request.build_absolute_uri(f"/api/chess/{game_id}/next")
+    # return requests.post(url).json()
+    chessBoard = chess.Board(game.fen)
+    chessMove = None
+
+    try:
+        chessMove = chess.Move.from_uci(move)
+    except chess.InvalidMoveError:
+        try:
+            chessMove = chessBoard.push_san(move)
+        except Exception as e2:
+            return 400, {"error": str(e2)}
+    except Exception as e1:
+        return 400, {"error": str(e1)}
+
+    if chessMove not in chessBoard.legal_moves:
+        return 400, {"error": f"Not a legal move: {move}"}
+
+    moveObj = await Move.objects.acreate(
+        game=game,
+        uci=chessMove.uci(),
+        san=chessBoard.san(chessMove),
+        ply=chessBoard.ply(),
+        fen=game.fen,
+    )
+
+    await ChatHistory.objects.acreate(game=game, role="user", content=chessMove.uci())
+    chessBoard.push(chessMove)
+    game.fen = chessBoard.fen()
+
+    chessNode = chess.pgn.read_game(io.StringIO(game.pgn)).end()
+    chessNode.add_main_variation(chessMove)
+    game.pgn = chessNode.game().accept(exporter)
+    await game.asave()
+    return moveObj
+
+
+@api.get(
+    "/chess/{game_id}/move",
+    tags=["moves"],
+    response=List[MoveModelSchema],
+    summary="Get a list of moves in a chess game.",
+)
 def get_chess_game_moves(request, game_id):
     game = get_object_or_404(Game, id=game_id)
     moves = Move.objects.filter(game=game)
     return moves
 
 
-@api.post("/chess/{game_id}/moves", response=MoveModelSchema)
-def post_chess_game_move(request, game_id, payload: MoveModelSchema):
-    game = get_object_or_404(Game, id=game_id)
-
-    last_move = Move.objects.filter(game=game).last()
-    if last_move:
-        payload.color = 1 if last_move.color == 2 else 2
-    else:
-        payload.color = 1
-
-    payload.game = game
-    move = Move.objects.create(**payload.dict())
-    return move
-
-
-@api.get("/chat/{game_id}", response=List[ChatHistoryModelSchema])
+@api.get(
+    "/chat/{game_id}/history",
+    tags=["history"],
+    response=List[ChatHistoryModelSchema],
+    summary="Get chat history.",
+)
 def get_chat_history(request, game_id):
     game = get_object_or_404(Game, id=game_id)
     return ChatHistory.objects.filter(game=game)
 
 
-@api.post("/chat/{game_id}", response=ChatHistoryModelSchema)
+@api.post(
+    "/chat/{game_id}/history",
+    tags=["history"],
+    response=ChatHistoryModelSchema,
+    summary="Append a chat message to history.",
+)
 def post_chat_history(request, game_id, payload: ChatHistoryModelSchema):
     game = get_object_or_404(Game, id=game_id)
     return ChatHistory.objects.create(game=game, **payload.dict())
 
 
-@api.get("/chat/{game_id}/suggest")
+@api.get(
+    "/chat/{game_id}",
+    tags=["chat"],
+    summary="Chat in real-time.",
+)
+def get_chat(request, game_id: int, message: str) -> HttpResponse:
+    game = get_object_or_404(Game, id=game_id)
+    hist = ChatHistory.objects.filter(game=game)
+    msgs = [x.toMessage() for x in hist]
+
+    msgs.append({"role": "system", "content": "You are a lively conversationalist."})
+    msgs.append({"role": "user", "content": message})
+
+    completion = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo-0613", temperature=0.8, messages=msgs
+    )
+
+    reply = completion.choices[0].message.content
+
+    ChatHistory.objects.create(game=game, role="user", content=message)
+    ChatHistory.objects.create(game=game, role="assistant", content=reply)
+    return HttpResponse(reply, content_type="text/plain")
+
+
+@api.get("/chat/{game_id}/suggest", tags=["chat"], summary="Suggest the next move.")
 def post_chess_next(request, game_id):
     """Suggest the next move in a chess game."""
     game = get_object_or_404(Game, id=game_id)
-    messages = ChatHistory.objects.filter(game=game)
+    hist = ChatHistory.objects.filter(game=game)
+    msgs = [x.toMessage() for x in hist]
+
+    ## A few more messages to help GPT-3 understand the context.
+    ## msgs.append({"role": "assistant", "content": "FEN: " + game.fen})
+    msgs.append({"role": "assistant", "content": "PGN: " + game.pgn})
+    msgs.append({"role": "user", "content": "What's the best next move?"})
+
+    legal_moves = [x.uci() for x in chess.Board(game.fen).legal_moves]
+    msgs.append({"role": "assistant", "content": "Legal moves: " + str(legal_moves)})
 
     completion = openai.ChatCompletion.create(
         model="gpt-3.5-turbo-0613",
-        messages=[x.toMessage() for x in messages],
-        temperature=1.1,
-        functions=[
-            {
-                "name": "suggest_next_chess_move",
-                "description": "Suggest the next move in a chess game, such as 'e4' or 'Nf3'.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "move": {
-                            "type": "string",
-                            "description": "Standard Algebraic Notation (SAN) for the next move.",
-                        },
-                    },
-                    "required": ["move"],
-                },
-            }
-        ],
-        function_call={"name": "suggest_next_chess_move"},
+        temperature=0.6,
+        messages=msgs,
     )
 
     message = completion.choices[0].message
-
-    if hasattr(message, "function_call"):
-        fn = message.function_call
-        ChatHistory.objects.create(
-            game=game, role="assistant", fname=fn.name, content=fn.arguments
-        )
-        return json.loads(fn.arguments)
-    else:
-        ChatHistory.objects.create(game=game, role="assistant", content=message.content)
-        return message.content
+    return message.content

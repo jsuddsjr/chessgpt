@@ -12,7 +12,7 @@ class Game(models.Model):
     outcome = models.CharField(max_length=100, null=True, blank=True)
     fen = models.CharField(max_length=100, help_text="Most recent FEN.")
     pgn = models.TextField(null=True, blank=True, help_text="PGN of game.")
-    date = models.DateTimeField(auto_now_add=True)
+    date = models.DateField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -35,18 +35,14 @@ class Move(models.Model):
 
 class ChatHistory(models.Model):
     CHAT_ROLES = [
-        ("function", "Function"),
         ("system", "System"),
         ("user", "User"),
         ("assistant", "Assistant"),
     ]
     game = models.ForeignKey(Game, on_delete=models.CASCADE)
     role = models.CharField(max_length=10, choices=CHAT_ROLES)
-    fname = models.CharField(max_length=30, null=True)
     content = models.CharField(max_length=255)
     created = models.DateTimeField(auto_now_add=True)
 
     def toMessage(self):
-        if self.role == "function":
-            return {"role": "function", "name": self.fname, "content": self.content}
         return {"role": self.role, "content": self.content}
