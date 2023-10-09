@@ -1,6 +1,7 @@
 import arcade
-
+from typing import List
 from classes.Board import Board
+from classes.Piece import Piece
 
 
 SCREEN_TITLE = "Chess with Chat GPT-3"
@@ -35,7 +36,8 @@ class ChessGame(arcade.Window):
         self.x = 100
         self.y = 100
 
-        self.board = Board()
+        self.board: Board = Board()
+        self.dragging: Piece = None
 
         self.setup()
 
@@ -52,17 +54,25 @@ class ChessGame(arcade.Window):
         arcade.finish_render()
 
     def on_mouse_motion(self, x: int, y: int, dx: int, dy: int):
-        self.x = x
-        self.y = y
-
-        self.board.highlight_square_at(x, y)
+        if self.dragging is not None:
+            self.dragging.position = (x, y)
+        else:
+            self.board.highlight_square_at(x, y)
 
     def on_mouse_press(self, x: int, y: int, button: int, modifiers: int):
-        square = self.board.square_at(x, y)
-        if square is None:
-            return
+        piece_list: List[Piece] = arcade.get_sprites_at_point((x, y), self.board.pieces)
+        if (
+            len(piece_list) > 0
+            and piece_list[0].piece.color == self.board.chess_board.turn
+        ):
+            self.dragging = piece_list[0]
+            self.board.highlights = self.board.legal_moves(self.dragging)
 
-        self.board.set_highlights = [square]
+    def on_mouse_release(self, x: int, y: int, button: int, modifiers: int):
+        if self.dragging is not None:
+            square = self.board.square_at(x, y)
+            self.board.move_piece(self.dragging, square)
+            self.dragging = None
 
     def on_key_press(self, key, modifiers):
         """Called whenever a key is pressed."""

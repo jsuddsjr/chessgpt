@@ -109,6 +109,17 @@ class Board(arcade.Shape):
             self.shapes.center_y + SQUARE_SIZE * (chess.square_rank(square) + 1),
         )
 
+    def move_piece(self, piece: Piece, square: chess.Square) -> bool:
+        if not self.is_valid_move(piece, square):
+            # Return to original position.
+            piece.position = self.center_of(piece.square)
+            return False
+
+        self.chess_board.push(chess.Move(piece.square, square))
+        piece.position = self.center_of(square)
+        piece.square = square
+        return True
+
     def piece_at(self, x: int, y: int) -> Piece:
         square = self.square_at(x, y)
         if square is None:
@@ -126,6 +137,16 @@ class Board(arcade.Shape):
             return None
 
         return chess.square(file, rank)
+
+    def is_valid_move(self, piece: Piece, square: chess.Square) -> bool:
+        return self.chess_board.is_legal(chess.Move(piece.square, square))
+
+    def legal_moves(self, piece: Piece) -> List[chess.Square]:
+        return [
+            move.to_square
+            for move in self.chess_board.legal_moves
+            if move.from_square == piece.square
+        ]
 
     def highlight_square_at(self, x: int, y: int) -> None:
         square = self.square_at(x, y)
@@ -146,16 +167,14 @@ class Board(arcade.Shape):
         self._highlighted_squares = [square]
         self.update_highlights()
 
-    @property
-    def highlights(self) -> list[chess.Square]:
-        return (
-            [x for x in self._highlighted_squares] if self._highlighted_squares else []
-        )
+    def get_highlights(self) -> list[chess.Square]:
+        return self._highlighted_squares
 
-    @highlights.setter
     def set_highlights(self, value: list[chess.Square]) -> None:
         self._highlighted_squares = value
         self.update_highlights()
+
+    highlights = property(get_highlights, set_highlights)
 
     def _create_square(self, center: NamedPoint, color: Color):
         return arcade.create_rectangle_filled(
