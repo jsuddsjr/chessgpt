@@ -48,12 +48,21 @@ class ChessGame(arcade.Window):
         self.clear()
         arcade.start_render()
         self.board.draw()
-        arcade.draw_circle_filled(self.x, self.y, 25, arcade.color.BLUE)
+        ## arcade.draw_circle_filled(self.x, self.y, 25, arcade.color.BLUE)
         arcade.finish_render()
 
     def on_mouse_motion(self, x: int, y: int, dx: int, dy: int):
         self.x = x
         self.y = y
+
+        self.board.highlight_square_at(x, y)
+
+    def on_mouse_press(self, x: int, y: int, button: int, modifiers: int):
+        square = self.board.square_at(x, y)
+        if square is None:
+            return
+
+        self.board.set_highlights = [square]
 
     def on_key_press(self, key, modifiers):
         """Called whenever a key is pressed."""

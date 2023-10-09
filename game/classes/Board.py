@@ -20,7 +20,7 @@ class Board(arcade.Shape):
         self.labels: arcade.SpriteList[arcade.Sprite] = None
         self.pieces: arcade.SpriteList[Piece] = None
 
-        self._highlighted_squares: List[chess.Square] = []
+        self._highlighted_squares: List[chess.Square] = None
         self._highlights: arcade.SpriteList[arcade.Sprite] = None
 
         self.chess_board = chess.Board()
@@ -30,7 +30,6 @@ class Board(arcade.Shape):
     def setup(self):
         self.shapes = arcade.ShapeElementList()
         self.labels = arcade.SpriteList()
-        self._highlights = arcade.SpriteList()
 
         centers = [x * SQUARE_SIZE + SQUARE_CENTER + BOARD_MARGIN for x in range(0, 8)]
         color_index = 0
@@ -58,12 +57,17 @@ class Board(arcade.Shape):
                 )
             )
 
+    def update_highlights(self):
+        self._highlights = arcade.SpriteList()
+        if self._highlighted_squares is None:
+            return
+
         for square in self._highlighted_squares:
             solid = SpriteSolidColor(SQUARE_SIZE, SQUARE_SIZE, arcade.color.YELLOW)
             solid.position = self.center_of(square)
             solid.alpha = 127
             self._highlights.append(solid)
-            self.labels.append(
+            self._highlights.append(
                 self._create_text_sprite(
                     chess.square_name(square),
                     NamedPoint(solid.position[0], solid.position[1]),
@@ -72,11 +76,12 @@ class Board(arcade.Shape):
             )
 
     def reset(self):
-        self._highlighted_squares = [chess.E4, chess.E5, chess.E6]
+        self._highlighted_squares = None
+        self.chess_board.reset()
+        self.update_highlights()
         self.setup()
 
         self.pieces = arcade.SpriteList()
-        self.chess_board.reset()
         for square, piece in self.chess_board.piece_map().items():
             self.pieces.append(
                 Piece(
@@ -104,14 +109,53 @@ class Board(arcade.Shape):
             self.shapes.center_y + SQUARE_SIZE * (chess.square_rank(square) + 1),
         )
 
+    def piece_at(self, x: int, y: int) -> Piece:
+        square = self.square_at(x, y)
+        if square is None:
+            return None
+
+        for piece in self.pieces:
+            if piece.square == square:
+                return piece
+
+    def square_at(self, x: int, y: int) -> chess.Square:
+        file = int((x - BOARD_MARGIN - self.shapes.center_x) / SQUARE_SIZE)
+        rank = int((y - BOARD_MARGIN - self.shapes.center_y) / SQUARE_SIZE)
+
+        if file < 0 or rank < 0 or file > 7 or rank > 7:
+            return None
+
+        return chess.square(file, rank)
+
+    def highlight_square_at(self, x: int, y: int) -> None:
+        square = self.square_at(x, y)
+        if square is None:
+            if self._highlighted_squares is None:
+                return
+
+            self._highlighted_squares = None
+            self.update_highlights()
+            return
+
+        if (
+            self._highlighted_squares is not None
+            and square in self._highlighted_squares
+        ):
+            return
+
+        self._highlighted_squares = [square]
+        self.update_highlights()
+
     @property
     def highlights(self) -> list[chess.Square]:
-        return [x for x in self._highlighted_squares]
+        return (
+            [x for x in self._highlighted_squares] if self._highlighted_squares else []
+        )
 
     @highlights.setter
     def set_highlights(self, value: list[chess.Square]) -> None:
         self._highlighted_squares = value
-        self.setup()
+        self.update_highlights()
 
     def _create_square(self, center: NamedPoint, color: Color):
         return arcade.create_rectangle_filled(
