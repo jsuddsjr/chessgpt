@@ -15,6 +15,7 @@ mypy = "^1.5.1"
 python-dotenv = "^1.0.0"
 openai = "^0.28.1"
 chess = "^1.10.0"
+arcade = "^2.6.17"
 
 
 [build-system]

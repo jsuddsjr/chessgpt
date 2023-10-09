@@ -63,7 +63,7 @@ async def hello_world(request):
         messages=[
             {
                 "role": "system",
-                "content": "You are a friendly chess player.",
+                "content": "You are a jocular chess player looking for an opponent.",
             },
             {"role": "user", "content": "Hello!"},
         ],
