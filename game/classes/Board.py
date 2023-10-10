@@ -1,7 +1,10 @@
 import arcade
+import chess
+
 from typing import List
 from arcade import Point, NamedPoint, Color, SpriteSolidColor
-from classes.Piece import Piece, chess
+
+from classes.Piece import Piece
 
 
 SQUARE_SIZE = 100
@@ -16,18 +19,19 @@ class Board(arcade.Shape):
     TEXT_COLOR: Color = arcade.color.WHITE
 
     def __init__(self):
+        self.chess_board = chess.Board()
         self.shapes: arcade.ShapeElementList = None
         self.labels: arcade.SpriteList[arcade.Sprite] = None
         self.pieces: arcade.SpriteList[Piece] = None
-
-        self._highlighted_squares: List[chess.Square] = None
         self._highlights: arcade.SpriteList[arcade.Sprite] = None
-
-        self.chess_board = chess.Board()
-
-        self.reset()
+        self._warnings: arcade.SpriteList[arcade.Sprite] = None
+        self.setup()
 
     def setup(self):
+        self.create_board()
+        self.reset()
+
+    def create_board(self):
         self.shapes = arcade.ShapeElementList()
         self.labels = arcade.SpriteList()
 
@@ -57,12 +61,11 @@ class Board(arcade.Shape):
                 )
             )
 
-    def update_highlights(self):
+    def update_highlights(self, highlighted_squares: list[chess.Square] = []):
         self._highlights = arcade.SpriteList()
-        if self._highlighted_squares is None:
-            return
+        self._highlights.extra = highlighted_squares
 
-        for square in self._highlighted_squares:
+        for square in highlighted_squares:
             solid = SpriteSolidColor(SQUARE_SIZE, SQUARE_SIZE, arcade.color.YELLOW)
             solid.position = self.center_of(square)
             solid.alpha = 127
@@ -75,12 +78,25 @@ class Board(arcade.Shape):
                 )
             )
 
-    def reset(self):
-        self._highlighted_squares = None
-        self.chess_board.reset()
-        self.update_highlights()
-        self.setup()
+    def update_warnings(
+        self, warning_squares: list[chess.Square] = [], warning_type: str = "check"
+    ):
+        self._warnings = arcade.SpriteList()
+        self._warnings.extra = warning_squares
 
+        for square in warning_squares:
+            solid = arcade.SpriteCircle(SQUARE_SIZE // 2, arcade.color.RED, True)
+            solid.position = self.center_of(square)
+            self._warnings.append(solid)
+            self._warnings.append(
+                self._create_text_sprite(
+                    warning_type,
+                    NamedPoint(solid.position[0], solid.position[1]),
+                    arcade.color.BLACK,
+                )
+            )
+
+    def update_pieces(self):
         self.pieces = arcade.SpriteList()
         for square, piece in self.chess_board.piece_map().items():
             self.pieces.append(
@@ -91,11 +107,18 @@ class Board(arcade.Shape):
                 )
             )
 
+    def reset(self):
+        self.chess_board.reset()
+        self.update_highlights()
+        self.update_pieces()
+        self.update_warnings()
+
     def draw(self):
         self.shapes.draw()
-        self._highlights.draw()
         self.labels.draw()
+        self._highlights.draw()
         self.pieces.draw()
+        self._warnings.draw()
 
     def center(self, x, y):
         self.shapes.move(x - BOARD_CENTER, y - BOARD_CENTER)
@@ -116,8 +139,14 @@ class Board(arcade.Shape):
             return False
 
         self.chess_board.push(chess.Move(piece.square, square))
-        piece.position = self.center_of(square)
-        piece.square = square
+        self.update_pieces()
+
+        # Look for warnings
+        if self.chess_board.is_check():
+            self.update_warnings(self.chess_board.checkers(), "check")
+        else:
+            self.update_warnings()
+
         return True
 
     def piece_at(self, x: int, y: int) -> Piece:
@@ -148,31 +177,34 @@ class Board(arcade.Shape):
             if move.from_square == piece.square
         ]
 
+    def show_attackers_of(self, x: int, y: int) -> None:
+        square = self.square_at(x, y)
+        if square in self._warnings.extra:
+            return
+
+        attackers = self.chess_board.attackers(not self.chess_board.turn, square)
+        self.update_warnings(attackers, "threat")
+
     def highlight_square_at(self, x: int, y: int) -> None:
         square = self.square_at(x, y)
+
+        # Remove highlight, if no square is selected.
         if square is None:
-            if self._highlighted_squares is None:
-                return
-
-            self._highlighted_squares = None
-            self.update_highlights()
+            if len(self._highlights) > 0:
+                self.update_highlights()
             return
 
-        if (
-            self._highlighted_squares is not None
-            and square in self._highlighted_squares
-        ):
+        # Skip update, if square is already highlighted.
+        if square in self.get_highlights():
             return
 
-        self._highlighted_squares = [square]
-        self.update_highlights()
+        self.update_highlights([square])
 
-    def get_highlights(self) -> list[chess.Square]:
-        return self._highlighted_squares
+    def get_highlights(self) -> List[chess.Square]:
+        return self._highlights.extra
 
-    def set_highlights(self, value: list[chess.Square]) -> None:
-        self._highlighted_squares = value
-        self.update_highlights()
+    def set_highlights(self, value: List[chess.Square]) -> None:
+        self.update_highlights(value)
 
     highlights = property(get_highlights, set_highlights)
 

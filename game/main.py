@@ -56,6 +56,7 @@ class ChessGame(arcade.Window):
     def on_mouse_motion(self, x: int, y: int, dx: int, dy: int):
         if self.dragging is not None:
             self.dragging.position = (x, y)
+            self.board.show_attackers_of(x, y)
         else:
             self.board.highlight_square_at(x, y)
 
@@ -76,7 +77,10 @@ class ChessGame(arcade.Window):
 
     def on_key_press(self, key, modifiers):
         """Called whenever a key is pressed."""
-        pass
+        if key == arcade.key.ESCAPE:
+            arcade.close_window()
+        elif key == arcade.key.R:
+            self.board.reset()
 
     def on_key_release(self, key, modifiers):
         """Called when the user releases a key."""
