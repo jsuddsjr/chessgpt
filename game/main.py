@@ -83,9 +83,10 @@ class ChessGame(arcade.Window):
 
     def on_key_press(self, key, modifiers):
         """Called whenever a key is pressed."""
-        if key == arcade.key.ESCAPE:
+        if key == arcade.key.Z and modifiers & arcade.key.MOD_CTRL:
             self.board.undo_move()
-            ## arcade.close_window()
+        elif key == arcade.key.Q:
+            arcade.close_window()
         elif key == arcade.key.R:
             self.board.reset()
         elif key == arcade.key.UP:
