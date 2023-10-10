@@ -70,6 +70,9 @@ class ChessGame(arcade.Window):
             and piece_list[0].piece.color == self.board.chess_board.turn
         ):
             self.dragging = piece_list[0]
+            # Remove and re-add the piece to the list, so it is drawn last.
+            self.board.pieces.remove(self.dragging)
+            self.board.pieces.append(self.dragging)
             self.board.highlights = self.board.legal_moves(self.dragging)
 
     def on_mouse_release(self, x: int, y: int, button: int, modifiers: int):
@@ -81,7 +84,8 @@ class ChessGame(arcade.Window):
     def on_key_press(self, key, modifiers):
         """Called whenever a key is pressed."""
         if key == arcade.key.ESCAPE:
-            arcade.close_window()
+            self.board.undo_move()
+            ## arcade.close_window()
         elif key == arcade.key.R:
             self.board.reset()
         elif key == arcade.key.UP:

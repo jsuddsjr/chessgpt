@@ -14,6 +14,8 @@ BOARD_MARGIN = 30
 BOARD_CENTER = BOARD_MARGIN + SQUARE_SIZE * 4
 BOARD_WIDTH = BOARD_CENTER * 2
 
+ORIGIN_BL = NamedPoint(BOARD_MARGIN, BOARD_MARGIN)
+
 
 class Board(arcade.Shape):
     COLORS = [arcade.color.WHITE, arcade.color.EMERALD]
@@ -27,8 +29,8 @@ class Board(arcade.Shape):
         self._highlights: arcade.SpriteList[arcade.Sprite] = None
         self._warnings: arcade.SpriteList[arcade.Sprite] = None
 
-        self.origin_x = BOARD_MARGIN
-        self.origin_y = BOARD_MARGIN
+        self.origin = ORIGIN_BL
+        self.perspective = chess.WHITE
 
         self.setup()
 
@@ -68,20 +70,34 @@ class Board(arcade.Shape):
 
     def create_labels(self):
         self.labels = arcade.SpriteList()
+        margin = BOARD_MARGIN / 2
+
         for x in range(0, 8):
             center = x * SQUARE_SIZE + SQUARE_CENTER
-            margin = BOARD_MARGIN / 2
+            if self.perspective == chess.BLACK:
+                x = 7 - x
 
             self.labels.append(
                 self._create_text_sprite(
                     str(x + 1),
-                    NamedPoint(self.origin_x - margin, self.origin_y + center),
+                    NamedPoint(self.origin.x - margin, self.origin.y + center),
                 )
             )
             self.labels.append(
                 self._create_text_sprite(
                     str(chr(x + 65)),
-                    NamedPoint(self.origin_x + center, self.origin_y - margin),
+                    NamedPoint(self.origin.x + center, self.origin.y - margin),
+                )
+            )
+
+    def update_pieces(self):
+        self.pieces = arcade.SpriteList()
+        for square, piece in self.chess_board.piece_map().items():
+            self.pieces.append(
+                Piece(
+                    piece,
+                    square,
+                    self.center_of(square),
                 )
             )
 
@@ -120,17 +136,6 @@ class Board(arcade.Shape):
                 )
             )
 
-    def update_pieces(self):
-        self.pieces = arcade.SpriteList()
-        for square, piece in self.chess_board.piece_map().items():
-            self.pieces.append(
-                Piece(
-                    piece,
-                    square,
-                    self.center_of(square),
-                )
-            )
-
     def reset(self):
         self.chess_board.reset()
         self.update_highlights()
@@ -147,23 +152,33 @@ class Board(arcade.Shape):
     def center(self, x, y):
         self.shapes.center_x = x
         self.shapes.center_y = y
-        self.origin_x = x - SQUARE_SIZE * 4
-        self.origin_y = y - SQUARE_SIZE * 4
+        self.origin = NamedPoint(x - SQUARE_SIZE * 4, y - SQUARE_SIZE * 4)
         self.update_pieces()
         self.create_labels()
 
     def center_of(self, square: chess.Square) -> Point:
+        rank = chess.square_rank(square)
+        file = chess.square_file(square)
+
+        if self.perspective == chess.BLACK:
+            rank = 7 - rank
+            file = 7 - file
+
         return (
-            self.origin_x + SQUARE_SIZE * chess.square_file(square) + SQUARE_CENTER,
-            self.origin_y + SQUARE_SIZE * chess.square_rank(square) + SQUARE_CENTER,
+            self.origin.x + SQUARE_SIZE * file + SQUARE_CENTER,
+            self.origin.y + SQUARE_SIZE * rank + SQUARE_CENTER,
         )
 
     def square_at(self, x: int, y: int) -> chess.Square:
-        file = int((x - self.origin_x) / SQUARE_SIZE)
-        rank = int((y - self.origin_y) / SQUARE_SIZE)
+        file = int((x - self.origin.x) / SQUARE_SIZE)
+        rank = int((y - self.origin.y) / SQUARE_SIZE)
 
         if file < 0 or rank < 0 or file > 7 or rank > 7:
             return None
+
+        if self.perspective is chess.BLACK:
+            file = 7 - file
+            rank = 7 - rank
 
         return chess.square(file, rank)
 
@@ -174,7 +189,7 @@ class Board(arcade.Shape):
             return False
 
         self.chess_board.push(chess.Move(piece.square, square))
-        self.update_pieces()
+        self.set_perspective(self.chess_board.turn)
 
         # Look for warnings
         if self.chess_board.is_check():
@@ -193,6 +208,23 @@ class Board(arcade.Shape):
             for move in self.chess_board.legal_moves
             if move.from_square == piece.square
         ]
+
+    def set_perspective(self, player=chess.WHITE) -> None:
+        if player == self.perspective:
+            return
+
+        self.perspective = player
+        self.update_pieces()
+        self.create_labels()
+        self.update_highlights()
+        self.update_warnings()
+
+    def undo_move(self) -> None:
+        if (len(self.chess_board.move_stack)) == 0:
+            return
+
+        self.chess_board.pop()
+        self.set_perspective(self.chess_board.turn)
 
     def show_attackers_of(self, x: int, y: int) -> None:
         square = self.square_at(x, y)
