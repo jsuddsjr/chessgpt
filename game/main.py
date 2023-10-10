@@ -36,6 +36,9 @@ class ChessGame(arcade.Window):
         self.x = 100
         self.y = 100
 
+        self.rotate = 0
+        self.rotate_speed = 45
+
         self.board: Board = Board()
         self.dragging: Piece = None
 
@@ -81,6 +84,10 @@ class ChessGame(arcade.Window):
             arcade.close_window()
         elif key == arcade.key.R:
             self.board.reset()
+        elif key == arcade.key.UP:
+            self.rotate_speed += 1
+        elif key == arcade.key.DOWN:
+            self.rotate_speed -= 1
 
     def on_key_release(self, key, modifiers):
         """Called when the user releases a key."""
@@ -88,7 +95,8 @@ class ChessGame(arcade.Window):
 
     def on_update(self, delta_time):
         """Movement and game logic"""
-        pass
+        # self.rotate = self.rotate + self.rotate_speed * delta_time
+        # self.board.shapes.angle = self.rotate
 
 
 def main():

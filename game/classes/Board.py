@@ -10,8 +10,9 @@ from classes.Piece import Piece
 SQUARE_SIZE = 100
 SQUARE_CENTER = SQUARE_SIZE / 2
 
-BOARD_MARGIN = 50
+BOARD_MARGIN = 30
 BOARD_CENTER = BOARD_MARGIN + SQUARE_SIZE * 4
+BOARD_WIDTH = BOARD_CENTER * 2
 
 
 class Board(arcade.Shape):
@@ -25,6 +26,10 @@ class Board(arcade.Shape):
         self.pieces: arcade.SpriteList[Piece] = None
         self._highlights: arcade.SpriteList[arcade.Sprite] = None
         self._warnings: arcade.SpriteList[arcade.Sprite] = None
+
+        self.origin_x = BOARD_MARGIN
+        self.origin_y = BOARD_MARGIN
+
         self.setup()
 
     def setup(self):
@@ -35,7 +40,20 @@ class Board(arcade.Shape):
         self.shapes = arcade.ShapeElementList()
         self.labels = arcade.SpriteList()
 
-        centers = [x * SQUARE_SIZE + SQUARE_CENTER + BOARD_MARGIN for x in range(0, 8)]
+        self.shapes.center_x = BOARD_CENTER
+        self.shapes.center_y = BOARD_CENTER
+
+        self.shapes.append(
+            arcade.create_rectangle_filled(
+                0,
+                0,
+                BOARD_WIDTH,
+                BOARD_WIDTH,
+                arcade.color.BLACK_BEAN,
+            )
+        )
+
+        centers = [x * SQUARE_SIZE + SQUARE_CENTER for x in range(-4, 4)]
         color_index = 0
 
         for file in centers:
@@ -48,16 +66,22 @@ class Board(arcade.Shape):
                 )
                 color_index += 1
 
-        for x, center in enumerate(centers):
+    def create_labels(self):
+        self.labels = arcade.SpriteList()
+        for x in range(0, 8):
+            center = x * SQUARE_SIZE + SQUARE_CENTER
+            margin = BOARD_MARGIN / 2
+
             self.labels.append(
                 self._create_text_sprite(
-                    str(x + 1), NamedPoint(BOARD_MARGIN / 2, center)
+                    str(x + 1),
+                    NamedPoint(self.origin_x - margin, self.origin_y + center),
                 )
             )
             self.labels.append(
                 self._create_text_sprite(
                     str(chr(x + 65)),
-                    NamedPoint(center, BOARD_MARGIN / 2),
+                    NamedPoint(self.origin_x + center, self.origin_y - margin),
                 )
             )
 
@@ -121,16 +145,27 @@ class Board(arcade.Shape):
         self._warnings.draw()
 
     def center(self, x, y):
-        self.shapes.move(x - BOARD_CENTER, y - BOARD_CENTER)
-        self.labels.move(x - BOARD_CENTER, y - BOARD_CENTER)
-        self.pieces.move(x - BOARD_CENTER, y - BOARD_CENTER)
-        self._highlights.move(x - BOARD_CENTER, y - BOARD_CENTER)
+        self.shapes.center_x = x
+        self.shapes.center_y = y
+        self.origin_x = x - SQUARE_SIZE * 4
+        self.origin_y = y - SQUARE_SIZE * 4
+        self.update_pieces()
+        self.create_labels()
 
     def center_of(self, square: chess.Square) -> Point:
         return (
-            self.shapes.center_x + SQUARE_SIZE * (chess.square_file(square) + 1),
-            self.shapes.center_y + SQUARE_SIZE * (chess.square_rank(square) + 1),
+            self.origin_x + SQUARE_SIZE * chess.square_file(square) + SQUARE_CENTER,
+            self.origin_y + SQUARE_SIZE * chess.square_rank(square) + SQUARE_CENTER,
         )
+
+    def square_at(self, x: int, y: int) -> chess.Square:
+        file = int((x - self.origin_x) / SQUARE_SIZE)
+        rank = int((y - self.origin_y) / SQUARE_SIZE)
+
+        if file < 0 or rank < 0 or file > 7 or rank > 7:
+            return None
+
+        return chess.square(file, rank)
 
     def move_piece(self, piece: Piece, square: chess.Square) -> bool:
         if not self.is_valid_move(piece, square):
@@ -148,24 +183,6 @@ class Board(arcade.Shape):
             self.update_warnings()
 
         return True
-
-    def piece_at(self, x: int, y: int) -> Piece:
-        square = self.square_at(x, y)
-        if square is None:
-            return None
-
-        for piece in self.pieces:
-            if piece.square == square:
-                return piece
-
-    def square_at(self, x: int, y: int) -> chess.Square:
-        file = int((x - BOARD_MARGIN - self.shapes.center_x) / SQUARE_SIZE)
-        rank = int((y - BOARD_MARGIN - self.shapes.center_y) / SQUARE_SIZE)
-
-        if file < 0 or rank < 0 or file > 7 or rank > 7:
-            return None
-
-        return chess.square(file, rank)
 
     def is_valid_move(self, piece: Piece, square: chess.Square) -> bool:
         return self.chess_board.is_legal(chess.Move(piece.square, square))
