@@ -1,7 +1,9 @@
 import arcade
 from typing import List
+
 from classes.Board import Board
 from classes.Piece import Piece
+from classes.Game import Game
 
 
 SCREEN_TITLE = "Chess with Chat GPT-3"
@@ -39,6 +41,7 @@ class ChessGame(arcade.Window):
         self.rotate = 0
         self.rotate_speed = 45
 
+        self.game: Game = Game()
         self.board: Board = Board()
         self.dragging: Piece = None
 
@@ -47,6 +50,7 @@ class ChessGame(arcade.Window):
     def setup(self):
         """Set up everything with the game"""
         self.board.center(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
+        self.game.create_game()
 
     def on_draw(self):
         """Draw everything"""
