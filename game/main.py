@@ -44,8 +44,6 @@ class ChessGame(arcade.Window):
 
         self.messages: arcade.SpriteList = arcade.SpriteList()
 
-        self.setup()
-
     def setup(self):
         """Set up everything with the game"""
         center = arcade.NamedPoint(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
@@ -55,7 +53,13 @@ class ChessGame(arcade.Window):
         if error:
             self.messages.append(
                 arcade.create_text_sprite(
-                    error, 0, 0, arcade.color.BLUSH, align="center", anchor_x="center"
+                    error,
+                    center.x,
+                    center.y,
+                    arcade.color.BLUSH,
+                    15.0,
+                    align="center",
+                    anchor_x="center",
                 )
             )
 
@@ -75,7 +79,7 @@ class ChessGame(arcade.Window):
             self.board.highlight_square_at(x, y)
 
     def on_mouse_press(self, x: int, y: int, button: int, modifiers: int):
-        message = arcade.get_sprites_at_exact_point(x, y, self.messages)
+        message = arcade.get_sprites_at_exact_point((x, y), self.messages)
         if message:
             self.messages.remove(message)
             return
@@ -101,8 +105,8 @@ class ChessGame(arcade.Window):
         """Called whenever a key is pressed."""
         if key == arcade.key.Z and modifiers & arcade.key.MOD_CTRL:
             self.board.undo_move
-        elif key == arcade.key.ESC:
-            self.errorMessage = None
+        elif key == arcade.key.ESCAPE:
+            self.messages.pop()  ## Remove oldest message.
         elif key == arcade.key.Q:
             arcade.close_window()
         elif key == arcade.key.R:

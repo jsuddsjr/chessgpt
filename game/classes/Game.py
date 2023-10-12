@@ -15,7 +15,9 @@ class Game(object):
     def create_game(self) -> str:
         """Create a new game"""
         try:
-            response = requests.post(GAME_BASEURL, json={"event": "ChessGPT"})
+            response = requests.post(
+                GAME_BASEURL, json={"event": "ChessGPT"}, timeout=200
+            )
             if response.status_code == 200:
                 self.__data = json.loads(response.content)
                 return None
