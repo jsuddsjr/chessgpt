@@ -6,6 +6,7 @@
         "streetsidesoftware.code-spell-checker",
         "tamasfe.even-better-toml",
         "zaczero.bootstrap-v4-snippets",
-        "marclipovsky.string-manipulation"
+        "marclipovsky.string-manipulation",
+        "mhutchie.git-graph"
     ]
 }
