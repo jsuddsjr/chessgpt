@@ -34,10 +34,6 @@ class ChessGame(arcade.Window):
         """Create the variables"""
         super().__init__(width, height, title)
 
-        # Starting location of player
-        self.x = 100
-        self.y = 100
-
         self.rotate = 0
         self.rotate_speed = 45
 
@@ -45,19 +41,27 @@ class ChessGame(arcade.Window):
         self.board: Board = Board()
         self.dragging: Piece = None
 
+        self.messages: arcade.SpriteList = arcade.SpriteList()
+
         self.setup()
 
     def setup(self):
         """Set up everything with the game"""
         self.board.center(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
-        self.game.create_game()
+        error = self.game.create_game()
+        if error:
+            self.messages.append(
+                arcade.create_text_sprite(
+                    error, 0, 0, arcade.color.BLUSH, align="center", anchor_x="center"
+                )
+            )
 
     def on_draw(self):
         """Draw everything"""
-        self.clear()
         arcade.start_render()
+        self.clear()
         self.board.draw()
-        ## arcade.draw_circle_filled(self.x, self.y, 25, arcade.color.BLUE)
+        self.messages.draw()
         arcade.finish_render()
 
     def on_mouse_motion(self, x: int, y: int, dx: int, dy: int):
@@ -68,6 +72,11 @@ class ChessGame(arcade.Window):
             self.board.highlight_square_at(x, y)
 
     def on_mouse_press(self, x: int, y: int, button: int, modifiers: int):
+        message = arcade.get_sprites_at_exact_point(x, y, self.messages)
+        if message:
+            self.messages.remove(message)
+            return
+
         piece_list: List[Piece] = arcade.get_sprites_at_point((x, y), self.board.pieces)
         if (
             len(piece_list) > 0
@@ -88,7 +97,9 @@ class ChessGame(arcade.Window):
     def on_key_press(self, key, modifiers):
         """Called whenever a key is pressed."""
         if key == arcade.key.Z and modifiers & arcade.key.MOD_CTRL:
-            self.board.undo_move()
+            self.board.undo_move
+        elif key == arcade.key.ESC:
+            self.errorMessage = None
         elif key == arcade.key.Q:
             arcade.close_window()
         elif key == arcade.key.R:

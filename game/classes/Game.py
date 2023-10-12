@@ -1,3 +1,4 @@
+import arcade
 import chess
 import chess.pgn
 import json
@@ -10,13 +11,15 @@ class Game(object):
         self.__data = None
         self.board: chess.Board = None
 
-    def create_game(self) -> bool:
+    def create_game(self) -> str:
         '''Create a new game'''
-        response = requests.post(GAME_BASEURL, json={"event":"ChessGPT"})
-        if response.status_code is 200:
-            self.__data = json.loads(response.content)
-            return True
-        return False
+        try:
+            response = requests.post(GAME_BASEURL, json={"event":"ChessGPT"})
+            if response.status_code is 200:
+                self.__data = json.loads(response.content)
+                return None
+        except Exception:
+            return "Failed to load game from server. Is it running?"
     
     @property
     def fen(self):
