@@ -35,11 +35,12 @@ class ChessGame(arcade.Window):
         super().__init__(width, height, title)
 
         self.rotate = 0
-        self.rotate_speed = 45
+        self.rotate_speed = 120
 
         self.game: Game = Game()
-        self.board: Board = Board()
+        self.board: Board = None
         self.dragging: Piece = None
+        self.is_rotating = False
 
         self.messages: arcade.SpriteList = arcade.SpriteList()
 
@@ -47,8 +48,10 @@ class ChessGame(arcade.Window):
 
     def setup(self):
         """Set up everything with the game"""
-        self.board.center(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
+        center = arcade.NamedPoint(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
         error = self.game.create_game()
+        self.board = Board(self.game.fen, center, SPRITE_SCALING_TILES)
+
         if error:
             self.messages.append(
                 arcade.create_text_sprite(
@@ -104,6 +107,11 @@ class ChessGame(arcade.Window):
             arcade.close_window()
         elif key == arcade.key.R:
             self.board.reset()
+        elif key == arcade.key.LEFT:
+            self.is_rotating = True
+            self.rotate = 0
+        elif key == arcade.key.RIGHT:
+            self.is_rotating = False
         elif key == arcade.key.UP:
             self.rotate_speed += 1
         elif key == arcade.key.DOWN:
@@ -115,8 +123,13 @@ class ChessGame(arcade.Window):
 
     def on_update(self, delta_time):
         """Movement and game logic"""
-        # self.rotate = self.rotate + self.rotate_speed * delta_time
-        # self.board.shapes.angle = self.rotate
+        if self.is_rotating:
+            self.rotate += self.rotate_speed * delta_time
+            self.rotate = min(self.rotate, 180)
+            self.board.rotate_board(self.rotate)
+            if self.rotate == 180:
+                self.is_rotating = False
+                self.rotate = 0
 
 
 def main():

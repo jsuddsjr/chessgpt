@@ -1,67 +1,92 @@
+import math
 import arcade
 import chess
 
 from typing import List
-from arcade import Point, NamedPoint, Color, SpriteSolidColor
+from arcade import NamedPoint, Color, SpriteSolidColor
 
 from classes.Piece import Piece
+from classes.EventSource import EventSource
 
 
 SQUARE_SIZE = 100
 SQUARE_CENTER = SQUARE_SIZE / 2
 
 BOARD_MARGIN = 30
-BOARD_CENTER = BOARD_MARGIN + SQUARE_SIZE * 4
+BOARD_HALF = SQUARE_SIZE * 4
+BOARD_CENTER = BOARD_MARGIN + BOARD_HALF
 BOARD_WIDTH = BOARD_CENTER * 2
 
-ORIGIN_BL = NamedPoint(BOARD_MARGIN, BOARD_MARGIN)
+CENTER_PT = NamedPoint(BOARD_CENTER, BOARD_CENTER)
+
+COLOR_WHITE = arcade.make_transparent_color(arcade.color.WHITE_SMOKE, 1 << 7)
+COLOR_BLACK = arcade.make_transparent_color(arcade.color.DARK_OLIVE_GREEN, 1 << 7)
+COLOR_BOARD = arcade.make_transparent_color(arcade.color.BLACK_BEAN, 1 << 5)
 
 
 class Board(arcade.Shape):
-    COLORS = [arcade.color.WHITE, arcade.color.EMERALD]
-    TEXT_COLOR: Color = arcade.color.WHITE
+    """A chess board visualizer."""
 
-    def __init__(self):
-        self.chess_board = chess.Board()
-        self.shapes: arcade.ShapeElementList = None
+    COLORS = [COLOR_WHITE, COLOR_BLACK]
+    TEXT_COLOR: Color = COLOR_WHITE
+
+    def __init__(
+        self,
+        fen: str = chess.STARTING_FEN,
+        center: NamedPoint = CENTER_PT,
+        scale: float = 1.0,  # NOT_USED
+    ):
+        """Creates a new board with the given FEN string."""
+
+        self.texture = None
+        self.scale = 1.0
+
+        self.chess_board = chess.Board(fen)
+        self.squares: arcade.ShapeElementList = None
         self.labels: arcade.SpriteList[arcade.Sprite] = None
         self.pieces: arcade.SpriteList[Piece] = None
         self._highlights: arcade.SpriteList[arcade.Sprite] = None
         self._warnings: arcade.SpriteList[arcade.Sprite] = None
 
-        self.origin = ORIGIN_BL
+        self.center = center
+        self.origin = NamedPoint(center.x - BOARD_HALF, center.y - BOARD_HALF)
         self.perspective = chess.WHITE
 
-        self.setup()
+        self._on_player_move = EventSource()
+        self._on_board_undo = EventSource()
 
-    def setup(self):
         self.create_board()
+        self.create_labels()
         self.reset()
 
     def create_board(self):
-        self.shapes = arcade.ShapeElementList()
-        self.labels = arcade.SpriteList()
+        self.squares = arcade.ShapeElementList()
+        self.squares.center_x = self.center.x
+        self.squares.center_y = self.center.y
 
-        self.shapes.center_x = BOARD_CENTER
-        self.shapes.center_y = BOARD_CENTER
+        # Create the board background
+        self.texture = arcade.load_texture("assets/board.jpg")
+        self.scale = BOARD_WIDTH / self.texture.width
 
-        self.shapes.append(
+        self.squares.append(
             arcade.create_rectangle_filled(
                 0,
                 0,
                 BOARD_WIDTH,
                 BOARD_WIDTH,
-                arcade.color.BLACK_BEAN,
+                COLOR_BOARD,
             )
         )
 
+        # Calculate the center offset of a square
         centers = [x * SQUARE_SIZE + SQUARE_CENTER for x in range(-4, 4)]
         color_index = 0
 
+        # Create the squares by file and rank (A1, A2, ... H8)
         for file in centers:
             color_index += 1
             for rank in centers:
-                self.shapes.append(
+                self.squares.append(
                     self._create_square(
                         NamedPoint(rank, file), Board.COLORS[color_index % 2]
                     )
@@ -91,13 +116,15 @@ class Board(arcade.Shape):
             )
 
     def update_pieces(self):
+        """Recreates the pieces according to the current board state."""
         self.pieces = arcade.SpriteList()
         for square, piece in self.chess_board.piece_map().items():
             self.pieces.append(
                 Piece(
                     piece,
                     square,
-                    self.center_of(square),
+                    self.center,
+                    self.offset_of(square),
                 )
             )
 
@@ -143,35 +170,63 @@ class Board(arcade.Shape):
         self.update_warnings()
 
     def draw(self):
-        self.shapes.draw()
+        self.texture.draw_scaled(
+            self.center.x, self.center.y, self.scale, self.squares.angle
+        )
+        self.squares.draw()
         self.labels.draw()
         self._highlights.draw()
         self.pieces.draw()
         self._warnings.draw()
 
-    def center(self, x, y):
-        self.shapes.center_x = x
-        self.shapes.center_y = y
-        self.origin = NamedPoint(x - SQUARE_SIZE * 4, y - SQUARE_SIZE * 4)
-        self.update_pieces()
-        self.create_labels()
+    @property
+    def on_player_move(self) -> EventSource:
+        return self._on_player_move
 
-    def center_of(self, square: chess.Square) -> Point:
-        rank = chess.square_rank(square)
-        file = chess.square_file(square)
+    @property
+    def on_board_undo(self) -> EventSource:
+        return self._on_board_undo
 
-        if self.perspective == chess.BLACK:
-            rank = 7 - rank
-            file = 7 - file
+    @property
+    def width(self) -> int:
+        return BOARD_WIDTH
 
-        return (
+    @property
+    def height(self) -> int:
+        return BOARD_WIDTH
+
+    def offset_of(self, square: chess.Square) -> NamedPoint:
+        """Returns the center of a square, relative to the center of the board."""
+        rank = chess.square_rank(square) - 4  ## row
+        file = chess.square_file(square) - 4  ## column
+
+        # if self.perspective == chess.BLACK:
+        #     rank = 7 - rank
+        #     file = 7 - file
+
+        return NamedPoint(
+            SQUARE_SIZE * file + SQUARE_CENTER,
+            SQUARE_SIZE * rank + SQUARE_CENTER,
+        )
+
+    def center_of(self, square: chess.Square) -> NamedPoint:
+        """Returns the center of a square, relative to screen coordinates."""
+        rank = chess.square_rank(square)  ## row
+        file = chess.square_file(square)  ## column
+
+        # if self.perspective == chess.BLACK:
+        #     rank = 7 - rank
+        #     file = 7 - file
+
+        return NamedPoint(
             self.origin.x + SQUARE_SIZE * file + SQUARE_CENTER,
             self.origin.y + SQUARE_SIZE * rank + SQUARE_CENTER,
         )
 
     def square_at(self, x: int, y: int) -> chess.Square:
-        file = int((x - self.origin.x) / SQUARE_SIZE)
-        rank = int((y - self.origin.y) / SQUARE_SIZE)
+        """Returns the square at the given coordinates."""
+        file = (x - self.origin.x) // SQUARE_SIZE
+        rank = (y - self.origin.y) // SQUARE_SIZE
 
         if file < 0 or rank < 0 or file > 7 or rank > 7:
             return None
@@ -182,12 +237,21 @@ class Board(arcade.Shape):
 
         return chess.square(file, rank)
 
+    def rotate_board(self, angle: int):
+        """Rotates the board and pieces by the given angle."""
+        self.squares.angle = angle
+        angle_rad = math.radians(angle)
+        for sprite in self.pieces:
+            sprite.rotate(angle_rad)
+
     def move_piece(self, piece: Piece, square: chess.Square) -> bool:
+        """Moves a piece to the given square. Returns True if the move was valid."""
         if not self.is_valid_move(piece, square):
             # Return to original position.
             piece.position = self.center_of(piece.square)
             return False
 
+        player = self.chess_board.turn
         self.chess_board.push(chess.Move(piece.square, square))
         self.set_perspective(self.chess_board.turn)
 
@@ -197,12 +261,15 @@ class Board(arcade.Shape):
         else:
             self.update_warnings()
 
+        self._on_player_move(player=player, move_uci=self.chess_board.peek().uci())
         return True
 
     def is_valid_move(self, piece: Piece, square: chess.Square) -> bool:
+        """Returns True if the given move is valid."""
         return self.chess_board.is_legal(chess.Move(piece.square, square))
 
     def legal_moves(self, piece: Piece) -> List[chess.Square]:
+        """Returns a list of legal moves for the given piece."""
         return [
             move.to_square
             for move in self.chess_board.legal_moves
@@ -210,23 +277,32 @@ class Board(arcade.Shape):
         ]
 
     def set_perspective(self, player=chess.WHITE) -> None:
+        """Sets the perspective of the board to the given player."""
         if player == self.perspective:
             return
 
         self.perspective = player
-        self.update_pieces()
+        self.rotate_board(180 * int(player == chess.BLACK))
+        # self.update_pieces()
+        # self.update_highlights()
+        # self.update_warnings()
         self.create_labels()
-        self.update_highlights()
-        self.update_warnings()
+
+    def swap_perspective(self) -> None:
+        """Swaps the perspective of the board."""
+        self.set_perspective(not self.perspective)
 
     def undo_move(self) -> None:
+        """Undoes the last move and resets perspective."""
         if (len(self.chess_board.move_stack)) == 0:
             return
 
         self.chess_board.pop()
         self.set_perspective(self.chess_board.turn)
+        self._on_board_undo(player=self.chess_board.turn)
 
     def show_attackers_of(self, x: int, y: int) -> None:
+        """Highlights all squares that threaten the given square."""
         square = self.square_at(x, y)
         if square in self._warnings.extra:
             return
@@ -235,6 +311,7 @@ class Board(arcade.Shape):
         self.update_warnings(attackers, "threat")
 
     def highlight_square_at(self, x: int, y: int) -> None:
+        """Highlights the square at the given coordinates."""
         square = self.square_at(x, y)
 
         # Remove highlight, if no square is selected.
@@ -250,12 +327,18 @@ class Board(arcade.Shape):
         self.update_highlights([square])
 
     def get_highlights(self) -> List[chess.Square]:
+        """Returns a list of highlighted squares."""
         return self._highlights.extra
 
     def set_highlights(self, value: List[chess.Square]) -> None:
+        """Sets the highlighted squares."""
         self.update_highlights(value)
 
     highlights = property(get_highlights, set_highlights)
+
+    ############################
+    # Private methods
+    ############################
 
     def _create_square(self, center: NamedPoint, color: Color):
         return arcade.create_rectangle_filled(
