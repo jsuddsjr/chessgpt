@@ -1,14 +1,17 @@
 import arcade
+import arcade.gui
+import chess
 import logging
 
 from typing import List
 
 from classes.Board import Board
 from classes.Piece import Piece
-from classes.Game import Game
+from classes.ChatGptApi import ChatGptApi
 
 LOG = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
+arcade.configure_logging(logging.ERROR)
 
 SCREEN_TITLE = "Chess with ChatGPT-3"
 
@@ -37,38 +40,65 @@ class ChessGame(arcade.Window):
     def __init__(self, width, height, title):
         """Create the variables"""
         super().__init__(width, height, title)
+        self.manager = arcade.gui.UIManager()
+        self.manager.enable()
 
-        self.game: Game = Game()
+        # self.v_box = arcade.gui.UIBoxLayout()
+        # text_area = arcade.gui.UITextArea(height=SCREEN_HEIGHT, width=300)
+        # self.v_box.add(text_area)
+
+        self.api: ChatGptApi = ChatGptApi()
         self.board: Board = None
         self.dragging: Piece = None
-
-        self.messages: arcade.SpriteList = arcade.SpriteList()
 
     def setup(self):
         """Set up everything with the game"""
         center = arcade.NamedPoint(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
-        error = self.game.create_game()
-        self.board = Board(self.game.fen, center, SPRITE_SCALING_TILES)
+        self.board = Board(self.api.fen, center, SPRITE_SCALING_TILES)
+        self.board.on_player_move += self.on_player_move
 
-        if error:
-            self.messages.append(
-                arcade.create_text_sprite(
-                    error,
-                    center.x,
-                    center.y,
-                    arcade.color.BLUSH,
-                    15.0,
-                    align="center",
-                    anchor_x="center",
-                )
-            )
+        self.api.on_game_data += self.on_api_update
+        self.api.on_error += self.on_error_message
+        self.api.hello()
+
+    def on_error_message(self, event: str, status: int):
+        self.show_message_box(
+            f"HTTP{status} received from {event}. Is the service running?",
+            ["Quit"],
+            lambda x: arcade.close_window(),
+        )
+
+    def on_api_update(self, event: str, data: dict):
+        """Update the game state"""
+        LOG.warning(f"Event {event} received!")
+        match event:
+            case "hello":
+                self.show_message_box(data, ["OK"])
+                self.api.create_game()
+            case "create_game":
+                self.show_message_box(data, ["OK"])
+                self.api.suggest_move()
+            case "make_move":
+                self.show_message_box(data, ["OK"])
+                self.api.suggest_move()
+            case "suggest_move":
+                self.show_message_box(data, ["OK"])
+                self.board.execute_move(data)
+            case "chat":
+                self.show_message_box(data, ["OK"])
+
+    def on_player_move(self, player: int, move: str):
+        LOG.warning(f"Player {player} played {move}!")
+        if player == chess.BLACK:
+            self.api.make_move(move)
+        else:
+            self.api.chat(move)
 
     def on_draw(self):
         """Draw everything"""
         arcade.start_render()
-        self.clear()
         self.board.draw()
-        self.messages.draw()
+        self.manager.draw()
         arcade.finish_render()
 
     def on_mouse_motion(self, x: int, y: int, dx: int, dy: int):
@@ -80,11 +110,6 @@ class ChessGame(arcade.Window):
             self.board.highlight_square_at(x, y)
 
     def on_mouse_press(self, x: int, y: int, button: int, modifiers: int):
-        messages = arcade.get_sprites_at_point((x, y), self.messages)
-        if messages:
-            self.messages.remove(messages[0])
-            return
-
         pieces: List[Piece] = arcade.get_sprites_at_point((x, y), self.board.pieces)
         if len(pieces) > 0 and pieces[0].piece.color == self.board.chess_board.turn:
             self.dragging = pieces[0]
@@ -117,6 +142,21 @@ class ChessGame(arcade.Window):
     def on_update(self, delta_time):
         """Movement and game logic"""
         self.board.update(delta_time)
+
+    def show_message_box(
+        self,
+        message: str,
+        buttons: List[str] = ["Cancel", "OK"],
+        callback=lambda x: None,
+    ):
+        message_box = arcade.gui.UIMessageBox(
+            width=300,
+            height=200,
+            message_text=message,
+            callback=callback,
+            buttons=buttons,
+        )
+        self.manager.add(message_box)
 
 
 def main():

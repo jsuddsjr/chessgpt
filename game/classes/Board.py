@@ -68,8 +68,8 @@ class Board(arcade.Shape):
 
         ## Events
 
-        self._on_player_move = EventSource()
-        self._on_board_undo = EventSource()
+        self.on_player_move = EventSource()
+        self.on_board_undo = EventSource()
 
         self.create_board()
         self.create_labels()
@@ -149,11 +149,13 @@ class Board(arcade.Shape):
                 )
             )
 
-    def update_highlights(self, highlighted_squares: list[chess.Square] = []):
+    def update_highlights(
+        self, highlighted_squares: chess.SquareSet = chess.SquareSet()
+    ):
         self._highlights = arcade.SpriteList()
         self._highlights.extra = highlighted_squares
 
-        for square in highlighted_squares:
+        for square in list(highlighted_squares):
             solid = SpriteSolidColor(SQUARE_SIZE, SQUARE_SIZE, arcade.color.YELLOW)
             solid.position = self.center_of(square)
             solid.alpha = 127
@@ -167,12 +169,14 @@ class Board(arcade.Shape):
             )
 
     def update_warnings(
-        self, warning_squares: list[chess.Square] = [], warning_type: str = "check"
+        self,
+        warning_squares: chess.SquareSet = chess.SquareSet(),
+        warning_type: str = "check",
     ):
         self._warnings = arcade.SpriteList()
         self._warnings.extra = warning_squares
 
-        for square in warning_squares:
+        for square in list(warning_squares):
             solid = arcade.SpriteCircle(SQUARE_SIZE // 2, arcade.color.RED, True)
             solid.position = self.center_of(square)
             self._warnings.append(solid)
@@ -203,14 +207,6 @@ class Board(arcade.Shape):
         self._highlights.draw()
         self.pieces.draw()
         self._warnings.draw()
-
-    @property
-    def on_player_move(self) -> EventSource:
-        return self._on_player_move
-
-    @property
-    def on_board_undo(self) -> EventSource:
-        return self._on_board_undo
 
     @property
     def width(self) -> int:
@@ -323,8 +319,18 @@ class Board(arcade.Shape):
         else:
             self.update_warnings()
 
-        self._on_player_move(player=player, move_uci=self.chess_board.peek().uci())
+        self.on_player_move(player=player, move=self.chess_board.peek().uci())
         return True
+
+    def execute_move(self, uci: str) -> bool:
+        """Moves a piece to the given screen coordinates. Returns True if the move was valid."""
+        move = chess.Move.from_uci(uci)
+        piece = self.piece_at(move.from_square)
+        self.move_piece(piece, move.to_square)
+
+    def piece_at(self, square: chess.Square) -> Piece:
+        """Returns the piece at the given square."""
+        return self.pieces.find(lambda sprite: sprite.square == square)
 
     def is_valid_move(self, piece: Piece, square: chess.Square) -> bool:
         """Returns True if the given move is valid."""
@@ -345,7 +351,7 @@ class Board(arcade.Shape):
 
         self.chess_board.pop()
         self.set_perspective(self.chess_board.turn)
-        self._on_board_undo(player=self.chess_board.turn)
+        self.on_board_undo(player=self.chess_board.turn)
 
     def show_attackers_of(self, x: int, y: int) -> None:
         """Highlights all squares that threaten the given square."""
@@ -404,8 +410,6 @@ class Board(arcade.Shape):
         LOG.info(f"Animating alpha to {self.alpha}")
 
         for sprite in self.labels:
-            sprite.alpha = self.alpha
-        for sprite in self._highlights:
             sprite.alpha = self.alpha
 
         if self.alpha == self.target_alpha:
