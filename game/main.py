@@ -1,12 +1,16 @@
 import arcade
+import logging
+
 from typing import List
 
 from classes.Board import Board
 from classes.Piece import Piece
 from classes.Game import Game
 
+LOG = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
-SCREEN_TITLE = "Chess with Chat GPT-3"
+SCREEN_TITLE = "Chess with ChatGPT-3"
 
 # How big are our image tiles?
 SPRITE_IMAGE_SIZE = 128
@@ -34,13 +38,9 @@ class ChessGame(arcade.Window):
         """Create the variables"""
         super().__init__(width, height, title)
 
-        self.rotate = 0
-        self.rotate_speed = 120
-
         self.game: Game = Game()
         self.board: Board = None
         self.dragging: Piece = None
-        self.is_rotating = False
 
         self.messages: arcade.SpriteList = arcade.SpriteList()
 
@@ -72,6 +72,7 @@ class ChessGame(arcade.Window):
         arcade.finish_render()
 
     def on_mouse_motion(self, x: int, y: int, dx: int, dy: int):
+        LOG.debug(f"Mouse motion: {x}, {y}, {dx}, {dy}")
         if self.dragging is not None:
             self.dragging.position = (x, y)
             self.board.show_attackers_of(x, y)
@@ -79,17 +80,14 @@ class ChessGame(arcade.Window):
             self.board.highlight_square_at(x, y)
 
     def on_mouse_press(self, x: int, y: int, button: int, modifiers: int):
-        message = arcade.get_sprites_at_exact_point((x, y), self.messages)
-        if message:
-            self.messages.remove(message)
+        messages = arcade.get_sprites_at_point((x, y), self.messages)
+        if messages:
+            self.messages.remove(messages[0])
             return
 
-        piece_list: List[Piece] = arcade.get_sprites_at_point((x, y), self.board.pieces)
-        if (
-            len(piece_list) > 0
-            and piece_list[0].piece.color == self.board.chess_board.turn
-        ):
-            self.dragging = piece_list[0]
+        pieces: List[Piece] = arcade.get_sprites_at_point((x, y), self.board.pieces)
+        if len(pieces) > 0 and pieces[0].piece.color == self.board.chess_board.turn:
+            self.dragging = pieces[0]
             # Remove and re-add the piece to the list, so it is drawn last.
             self.board.pieces.remove(self.dragging)
             self.board.pieces.append(self.dragging)
@@ -106,34 +104,19 @@ class ChessGame(arcade.Window):
         if key == arcade.key.Z and modifiers & arcade.key.MOD_CTRL:
             self.board.undo_move
         elif key == arcade.key.ESCAPE:
-            self.messages.pop()  ## Remove oldest message.
+            if self.dragging is not None:
+                self.board.reset_piece(self.dragging)
+                self.dragging = None
         elif key == arcade.key.Q:
             arcade.close_window()
         elif key == arcade.key.R:
             self.board.reset()
         elif key == arcade.key.LEFT:
-            self.is_rotating = True
-            self.rotate = 0
-        elif key == arcade.key.RIGHT:
-            self.is_rotating = False
-        elif key == arcade.key.UP:
-            self.rotate_speed += 1
-        elif key == arcade.key.DOWN:
-            self.rotate_speed -= 1
-
-    def on_key_release(self, key, modifiers):
-        """Called when the user releases a key."""
-        pass
+            self.board.toggle_perspective()
 
     def on_update(self, delta_time):
         """Movement and game logic"""
-        if self.is_rotating:
-            self.rotate += self.rotate_speed * delta_time
-            self.rotate = min(self.rotate, 180)
-            self.board.rotate_board(self.rotate)
-            if self.rotate == 180:
-                self.is_rotating = False
-                self.rotate = 0
+        self.board.update(delta_time)
 
 
 def main():

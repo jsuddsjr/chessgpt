@@ -1,6 +1,7 @@
-import math
 import arcade
 import chess
+import logging
+import math
 
 from typing import List
 from arcade import NamedPoint, Color, SpriteSolidColor
@@ -8,6 +9,7 @@ from arcade import NamedPoint, Color, SpriteSolidColor
 from classes.Piece import Piece
 from classes.EventSource import EventSource
 
+LOG = logging.getLogger(__name__)
 
 SQUARE_SIZE = 100
 SQUARE_CENTER = SQUARE_SIZE / 2
@@ -23,12 +25,16 @@ COLOR_WHITE = arcade.make_transparent_color(arcade.color.WHITE_SMOKE, 1 << 7)
 COLOR_BLACK = arcade.make_transparent_color(arcade.color.DARK_OLIVE_GREEN, 1 << 7)
 COLOR_BOARD = arcade.make_transparent_color(arcade.color.BLACK_BEAN, 1 << 5)
 
+TEXT_COLOR: Color = arcade.color.WHITE
+
+ROTATE_SPEED = 135  ## degrees per second
+ALPHA_SPEED = 127  ## alpha per second
+
 
 class Board(arcade.Shape):
     """A chess board visualizer."""
 
     COLORS = [COLOR_WHITE, COLOR_BLACK]
-    TEXT_COLOR: Color = COLOR_WHITE
 
     def __init__(
         self,
@@ -48,9 +54,19 @@ class Board(arcade.Shape):
         self._highlights: arcade.SpriteList[arcade.Sprite] = None
         self._warnings: arcade.SpriteList[arcade.Sprite] = None
 
+        ## Board will rotate until it reaches the target angle.
+        self.perspective = chess.WHITE
+        self.target_angle = 0
+        self.angle = 0
+
         self.center = center
         self.origin = NamedPoint(center.x - BOARD_HALF, center.y - BOARD_HALF)
-        self.perspective = chess.WHITE
+
+        ## Alpha value of the text.
+        self.alpha = 0
+        self.target_alpha = 255
+
+        ## Events
 
         self._on_player_move = EventSource()
         self._on_board_undo = EventSource()
@@ -97,6 +113,8 @@ class Board(arcade.Shape):
         self.labels = arcade.SpriteList()
         margin = BOARD_MARGIN / 2
 
+        self.target_alpha = 255
+
         for x in range(0, 8):
             center = x * SQUARE_SIZE + SQUARE_CENTER
             if self.perspective == chess.BLACK:
@@ -106,12 +124,15 @@ class Board(arcade.Shape):
                 self._create_text_sprite(
                     str(x + 1),
                     NamedPoint(self.origin.x - margin, self.origin.y + center),
+                    TEXT_COLOR,
                 )
             )
+
             self.labels.append(
                 self._create_text_sprite(
                     str(chr(x + 65)),
                     NamedPoint(self.origin.x + center, self.origin.y - margin),
+                    TEXT_COLOR,
                 )
             )
 
@@ -169,6 +190,10 @@ class Board(arcade.Shape):
         self.update_pieces()
         self.update_warnings()
 
+    def update(self, delta_time: float):
+        self.rotate_board()
+        self.animate_alpha()
+
     def draw(self):
         self.texture.draw_scaled(
             self.center.x, self.center.y, self.scale, self.squares.angle
@@ -195,14 +220,14 @@ class Board(arcade.Shape):
     def height(self) -> int:
         return BOARD_WIDTH
 
+    ############################
+    # Coordinates
+    ############################
+
     def offset_of(self, square: chess.Square) -> NamedPoint:
         """Returns the center of a square, relative to the center of the board."""
         rank = chess.square_rank(square) - 4  ## row
         file = chess.square_file(square) - 4  ## column
-
-        # if self.perspective == chess.BLACK:
-        #     rank = 7 - rank
-        #     file = 7 - file
 
         return NamedPoint(
             SQUARE_SIZE * file + SQUARE_CENTER,
@@ -214,9 +239,9 @@ class Board(arcade.Shape):
         rank = chess.square_rank(square)  ## row
         file = chess.square_file(square)  ## column
 
-        # if self.perspective == chess.BLACK:
-        #     rank = 7 - rank
-        #     file = 7 - file
+        if self.perspective == chess.BLACK:
+            rank = 7 - rank
+            file = 7 - file
 
         return NamedPoint(
             self.origin.x + SQUARE_SIZE * file + SQUARE_CENTER,
@@ -224,7 +249,7 @@ class Board(arcade.Shape):
         )
 
     def square_at(self, x: int, y: int) -> chess.Square:
-        """Returns the square at the given coordinates."""
+        """Returns the square at the given screen coordinates."""
         file = (x - self.origin.x) // SQUARE_SIZE
         rank = (y - self.origin.y) // SQUARE_SIZE
 
@@ -232,17 +257,53 @@ class Board(arcade.Shape):
             return None
 
         if self.perspective is chess.BLACK:
-            file = 7 - file
             rank = 7 - rank
+            file = 7 - file
 
         return chess.square(file, rank)
 
-    def rotate_board(self, angle: int):
+    ############################
+    # Perspective
+    ############################
+
+    def rotate_board(self):
         """Rotates the board and pieces by the given angle."""
-        self.squares.angle = angle
-        angle_rad = math.radians(angle)
+        if self.angle == self.target_angle:
+            return
+
+        if self.angle < self.target_angle:
+            self.angle += ROTATE_SPEED / 60  ## FPS
+
+        LOG.info(f"Rotating board to {self.angle} degrees")
+
+        self.squares.angle = self.angle
+        angle_rad = math.radians(self.angle)
         for sprite in self.pieces:
             sprite.rotate(angle_rad)
+
+    def set_perspective(self, player=chess.WHITE) -> None:
+        """Sets the perspective of the board to the given player."""
+        if player == self.perspective:
+            return
+        self.angle, self.target_angle = [
+            (180, 360),
+            (0, 180),
+        ][self.perspective]
+        self.perspective = player
+        self.target_alpha = 0
+
+    def toggle_perspective(self) -> None:
+        """Swaps the perspective of the board."""
+        self.set_perspective(not self.perspective)
+
+    ############################
+    # Moves
+    ############################
+
+    def reset_piece(self, piece: Piece) -> None:
+        """Resets the piece to its original position."""
+        piece.position = self.center_of(piece.square)
+        self.update_highlights()
 
     def move_piece(self, piece: Piece, square: chess.Square) -> bool:
         """Moves a piece to the given square. Returns True if the move was valid."""
@@ -254,6 +315,7 @@ class Board(arcade.Shape):
         player = self.chess_board.turn
         self.chess_board.push(chess.Move(piece.square, square))
         self.set_perspective(self.chess_board.turn)
+        self.update_pieces()
 
         # Look for warnings
         if self.chess_board.is_check():
@@ -276,22 +338,6 @@ class Board(arcade.Shape):
             if move.from_square == piece.square
         ]
 
-    def set_perspective(self, player=chess.WHITE) -> None:
-        """Sets the perspective of the board to the given player."""
-        if player == self.perspective:
-            return
-
-        self.perspective = player
-        self.rotate_board(180 * int(player == chess.BLACK))
-        # self.update_pieces()
-        # self.update_highlights()
-        # self.update_warnings()
-        self.create_labels()
-
-    def swap_perspective(self) -> None:
-        """Swaps the perspective of the board."""
-        self.set_perspective(not self.perspective)
-
     def undo_move(self) -> None:
         """Undoes the last move and resets perspective."""
         if (len(self.chess_board.move_stack)) == 0:
@@ -309,6 +355,10 @@ class Board(arcade.Shape):
 
         attackers = self.chess_board.attackers(not self.chess_board.turn, square)
         self.update_warnings(attackers, "threat")
+
+    ############################
+    # Highlights
+    ############################
 
     def highlight_square_at(self, x: int, y: int) -> None:
         """Highlights the square at the given coordinates."""
@@ -337,6 +387,31 @@ class Board(arcade.Shape):
     highlights = property(get_highlights, set_highlights)
 
     ############################
+    # Fade In/Out
+    ############################
+
+    def animate_alpha(self):
+        if self.alpha == self.target_alpha:
+            return
+
+        if self.alpha < self.target_alpha:
+            self.alpha += ALPHA_SPEED / 60  ## FPS
+        else:
+            self.alpha -= ALPHA_SPEED / 60  ## FPS
+
+        self.alpha = max(0, min(self.target_alpha, self.alpha))
+
+        LOG.info(f"Animating alpha to {self.alpha}")
+
+        for sprite in self.labels:
+            sprite.alpha = self.alpha
+        for sprite in self._highlights:
+            sprite.alpha = self.alpha
+
+        if self.alpha == self.target_alpha:
+            self.create_labels()
+
+    ############################
     # Private methods
     ############################
 
@@ -352,7 +427,7 @@ class Board(arcade.Shape):
         font_color: Color = TEXT_COLOR,
         font_size: int = 15,
     ):
-        return arcade.create_text_sprite(
+        text_sprite = arcade.create_text_sprite(
             text,
             center.x,
             center.y,
@@ -361,3 +436,5 @@ class Board(arcade.Shape):
             anchor_x="center",
             anchor_y="center",
         )
+        text_sprite.alpha = self.alpha
+        return text_sprite
