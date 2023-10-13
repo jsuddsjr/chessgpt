@@ -2,16 +2,25 @@ import arcade
 import arcade.gui
 import chess
 import logging
+import threading
 
 from typing import List
 
 from classes.Board import Board
 from classes.Piece import Piece
 from classes.ChatGptApi import ChatGptApi
+from classes.EventSource import EventSource
 
 LOG = logging.getLogger(__name__)
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(
+    format="%(asctime)s - %(thread)d %(name)s - %(levelname)s - %(message)s",
+    level=logging.WARNING,
+)
 arcade.configure_logging(logging.ERROR)
+
+#####################################################################
+# Constants
+#####################################################################
 
 SCREEN_TITLE = "Chess with ChatGPT-3"
 
@@ -34,6 +43,11 @@ SCREEN_WIDTH = SPRITE_SIZE * SCREEN_GRID_WIDTH
 SCREEN_HEIGHT = SPRITE_SIZE * SCREEN_GRID_HEIGHT
 
 
+#####################################################################
+# Game Window
+#####################################################################
+
+
 class ChessGame(arcade.Window):
     """Main Window"""
 
@@ -42,6 +56,9 @@ class ChessGame(arcade.Window):
         super().__init__(width, height, title)
         self.manager = arcade.gui.UIManager()
         self.manager.enable()
+
+        LOG.warning("Initializing game...")
+        EventSource.set_dispatcher(self)
 
         # self.v_box = arcade.gui.UIBoxLayout()
         # text_area = arcade.gui.UITextArea(height=SCREEN_HEIGHT, width=300)
@@ -55,35 +72,45 @@ class ChessGame(arcade.Window):
         """Set up everything with the game"""
         center = arcade.NamedPoint(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
         self.board = Board(self.api.fen, center, SPRITE_SCALING_TILES)
-        self.board.on_player_move += self.on_player_move
-
-        self.api.on_game_data += self.on_api_update
-        self.api.on_error += self.on_error_message
         self.api.hello()
 
     def on_error_message(self, event: str, status: int):
+        LOG.warning(f"Error message: {event} {status}")
         self.show_message_box(
             f"HTTP{status} received from {event}. Is the service running?",
             ["Quit"],
             lambda x: arcade.close_window(),
         )
 
+    def on_hello(self, data: str):
+        """Open message box with hello message"""
+        LOG.warning(f"Hello received: {data}")
+        try:
+            self.show_message_box(
+                data,
+                ["Sure!", "Quit"],
+                lambda x: arcade.close_window()
+                if x == "Quit"
+                else self.api.create_game(),
+            )
+        except Exception as e:
+            LOG.error(e)
+
+    def on_suggest_move(self, event: str, data: str):
+        """Open message box with suggested move"""
+        LOG.warning(f"Suggested move: {data}")
+        self.board.execute_move(data)
+
     def on_api_update(self, event: str, data: dict):
         """Update the game state"""
         LOG.warning(f"Event {event} received!")
         match event:
-            case "hello":
-                self.show_message_box(data, ["OK"])
-                self.api.create_game()
             case "create_game":
                 self.show_message_box(data, ["OK"])
                 self.api.suggest_move()
             case "make_move":
                 self.show_message_box(data, ["OK"])
                 self.api.suggest_move()
-            case "suggest_move":
-                self.show_message_box(data, ["OK"])
-                self.board.execute_move(data)
             case "chat":
                 self.show_message_box(data, ["OK"])
 
@@ -91,8 +118,9 @@ class ChessGame(arcade.Window):
         LOG.warning(f"Player {player} played {move}!")
         if player == chess.BLACK:
             self.api.make_move(move)
+
         else:
-            self.api.chat(move)
+            self.api.chat("I played this move for you: " + move)
 
     def on_draw(self):
         """Draw everything"""
@@ -157,6 +185,15 @@ class ChessGame(arcade.Window):
             buttons=buttons,
         )
         self.manager.add(message_box)
+
+
+ChessGame.register_event_type("on_player_move")  # Sent when player moves a piece
+ChessGame.register_event_type("on_api_update")  # Sent when API receives data
+ChessGame.register_event_type("on_error_message")  # Sent when API returns error
+ChessGame.register_event_type("on_chat_message")  # Sent when API returns a chat
+ChessGame.register_event_type("on_suggest_move")  # Sent when API returns a move
+ChessGame.register_event_type("on_board_undo")  # Sent when last turn was undone
+ChessGame.register_event_type("on_hello")  # Sent when ChatGPT says hello
 
 
 def main():

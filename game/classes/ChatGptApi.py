@@ -23,8 +23,10 @@ class ChatGptApi(object):
 
         threading.Thread(target=self.loop.run_forever).start()
 
-        self.on_game_data = EventSource()
-        self.on_error = EventSource()
+        self.on_data_received = EventSource("on_api_update")
+        self.on_data_error = EventSource("on_error_message")
+        self.on_suggest_move = EventSource("on_suggest_move")
+        self.on_hello = EventSource("on_hello")
 
     def hello(self):
         """Greetings from the API"""
@@ -35,9 +37,9 @@ class ChatGptApi(object):
             async with session.get(API_GET_HELLO) as response:
                 if response.status == 200:
                     data = await response.json()
-                    self.on_game_data(event="hello", data=data)
+                    self.on_hello(data)
                 else:
-                    self.on_error(event="hello", status=response.status)
+                    self.on_data_error(event="hello", status=response.status)
 
     def create_game(self) -> str:
         """Create a new game"""
@@ -50,9 +52,9 @@ class ChatGptApi(object):
             ) as response:
                 if response.status == 200:
                     self.__game_data = await response.json()
-                    self.on_game_data(event="create_game", data=self.__game_data)
+                    self.on_data_received(event="create_game", data=self.__game_data)
                 else:
-                    self.on_error(event="create_game", status=response.status)
+                    self.on_data_error(event="create_game", status=response.status)
 
     def make_move(self, move: str):
         """Make a move in the game"""
@@ -65,9 +67,9 @@ class ChatGptApi(object):
             ) as response:
                 if response.status == 200:
                     data = await response.json()
-                    self.on_game_data(event="make_move", data=data)
+                    self.on_data_received(data)
                 else:
-                    self.on_error(event="make_move", status=response.status)
+                    self.on_data_error(event="make_move", status=response.status)
 
     def suggest_move(self):
         """Suggest a move in the game"""
@@ -78,9 +80,9 @@ class ChatGptApi(object):
             async with session.get(API_GET_SUGGEST_MOVE.format(id=self.id)) as response:
                 if response.status == 200:
                     data = await response.json()
-                    self.on_game_data(event="suggest_move", data=data)
+                    self.on_suggest_move(data)
                 else:
-                    self.on_error(event="suggest_move", status=response.status)
+                    self.on_data_error(event="suggest_move", status=response.status)
 
     def chat(self, message: str):
         """Send a message in the game"""
@@ -93,9 +95,9 @@ class ChatGptApi(object):
             ) as response:
                 if response.status == 200:
                     data = await response.json()
-                    self.on_game_data(event="chat", data=data)
+                    self.on_data_received(event="chat", data=data)
                 else:
-                    self.on_error(event="chat", status=response.status)
+                    self.on_data_error(event="chat", status=response.status)
 
     @property
     def fen(self):

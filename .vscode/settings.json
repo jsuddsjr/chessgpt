@@ -10,7 +10,9 @@
         "chatapi",
         "dotenv",
         "Leitner",
+        "levelname",
         "openai",
+        "pyglet",
         "pymongo",
         "quizdata",
         "quizgpt"

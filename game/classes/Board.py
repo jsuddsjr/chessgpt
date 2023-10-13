@@ -68,8 +68,8 @@ class Board(arcade.Shape):
 
         ## Events
 
-        self.on_player_move = EventSource()
-        self.on_board_undo = EventSource()
+        self.on_player_move = EventSource('on_player_move')
+        self.on_board_undo = EventSource('on_board_undo')
 
         self.create_board()
         self.create_labels()
