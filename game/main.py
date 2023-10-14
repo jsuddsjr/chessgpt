@@ -2,7 +2,6 @@ import arcade
 import arcade.gui
 import chess
 import logging
-import threading
 
 from typing import List
 
@@ -22,7 +21,7 @@ arcade.configure_logging(logging.ERROR)
 # Constants
 #####################################################################
 
-SCREEN_TITLE = "Chess with ChatGPT-3"
+SCREEN_TITLE = "Chess with ChatGPT"
 
 # How big are our image tiles?
 SPRITE_IMAGE_SIZE = 128
@@ -54,6 +53,7 @@ class ChessGame(arcade.Window):
     def __init__(self, width, height, title):
         """Create the variables"""
         super().__init__(width, height, title)
+
         self.manager = arcade.gui.UIManager()
         self.manager.enable()
 
@@ -74,45 +74,48 @@ class ChessGame(arcade.Window):
         self.board = Board(self.api.fen, center, SPRITE_SCALING_TILES)
         self.api.hello()
 
-    def on_error_message(self, event: str, status: int):
-        LOG.warning(f"Error message: {event} {status}")
+    def on_api_error(self, source: str, status: int):
+        LOG.warning(f"Error message: {source} {status}")
         self.show_message_box(
-            f"HTTP{status} received from {event}. Is the service running?",
+            f"HTTP{status} received. Did you start the ChessGPT service?",
             ["Quit"],
             lambda x: arcade.close_window(),
         )
 
-    def on_hello(self, data: str):
+    def on_api_hello(self, data: str):
         """Open message box with hello message"""
         LOG.warning(f"Hello received: {data}")
         try:
             self.show_message_box(
                 data,
-                ["Sure!", "Quit"],
-                lambda x: arcade.close_window()
-                if x == "Quit"
-                else self.api.create_game(),
+                ["Sure!", "No thanks."],
+                lambda x: self.api.create_game()
+                if x == "Sure!"
+                else self.show_message_box("You're own your own"),
             )
         except Exception as e:
             LOG.error(e)
 
-    def on_suggest_move(self, event: str, data: str):
+    def on_api_suggest(self, event: str, data: str):
         """Open message box with suggested move"""
         LOG.warning(f"Suggested move: {data}")
         self.board.execute_move(data)
 
-    def on_api_update(self, event: str, data: dict):
-        """Update the game state"""
-        LOG.warning(f"Event {event} received!")
-        match event:
+    def on_api_update(self, source: str, data: dict):
+        """Respond to updates to game state"""
+        LOG.warning(f"Data from {source} received!")
+        match source:
             case "create_game":
-                self.show_message_box(data, ["OK"])
+                self.show_message_box(data)
                 self.api.suggest_move()
             case "make_move":
-                self.show_message_box(data, ["OK"])
+                self.show_message_box(data)
                 self.api.suggest_move()
-            case "chat":
-                self.show_message_box(data, ["OK"])
+
+    def on_api_chat(self, event: str, data: str):
+        """Open message box with chat message"""
+        LOG.warning(f"Chat message: {data}")
+        self.show_message_box(data)
 
     def on_player_move(self, player: int, move: str):
         LOG.warning(f"Player {player} played {move}!")
@@ -174,7 +177,7 @@ class ChessGame(arcade.Window):
     def show_message_box(
         self,
         message: str,
-        buttons: List[str] = ["Cancel", "OK"],
+        buttons: List[str] = ["OK"],
         callback=lambda x: None,
     ):
         message_box = arcade.gui.UIMessageBox(
@@ -187,13 +190,18 @@ class ChessGame(arcade.Window):
         self.manager.add(message_box)
 
 
+#####################################################################
+# Custom Events (see EventSource.py)
+#####################################################################
+
 ChessGame.register_event_type("on_player_move")  # Sent when player moves a piece
-ChessGame.register_event_type("on_api_update")  # Sent when API receives data
-ChessGame.register_event_type("on_error_message")  # Sent when API returns error
-ChessGame.register_event_type("on_chat_message")  # Sent when API returns a chat
-ChessGame.register_event_type("on_suggest_move")  # Sent when API returns a move
 ChessGame.register_event_type("on_board_undo")  # Sent when last turn was undone
-ChessGame.register_event_type("on_hello")  # Sent when ChatGPT says hello
+
+ChessGame.register_event_type("on_api_hello")  # Sent when ChatGPT says hello
+ChessGame.register_event_type("on_api_update")  # Sent when API receives data
+ChessGame.register_event_type("on_api_suggest")  # Sent when API returns a move
+ChessGame.register_event_type("on_api_chat")  # Sent when API returns a chat
+ChessGame.register_event_type("on_api_error")  # Sent when API returns error
 
 
 def main():
