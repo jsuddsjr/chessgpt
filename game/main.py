@@ -231,7 +231,7 @@ class ChessGame(arcade.Window):
         self.append_chat(data)
 
         move = self.get_move_from_text(data)
-        if move and self.board.is_valid_move(move):
+        if move is not None:
             self.board.execute_move(move)
 
     def get_move_from_text(self, text: str) -> str:
