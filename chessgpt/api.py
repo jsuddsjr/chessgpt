@@ -168,10 +168,10 @@ async def post_chess_next_move(request, game_id: int, move: str):
     # return requests.post(url).json()
     chessBoard = chess.Board(game.fen)
     chessMove = None
+    san = None
 
     turn = chessBoard.turn
     player = game.white if turn else game.black
-    san = None
 
     try:
         chessMove = chess.Move.from_uci(move)
@@ -194,26 +194,54 @@ async def post_chess_next_move(request, game_id: int, move: str):
     except Exception as e1:
         return 400, {"error": str(e1)}
 
-    moveObj = await Move.objects.acreate(
-        game=game,
-        turn=turn,
-        uci=chessMove.uci(),
-        san=san,
-        ply=chessBoard.ply(),
-        fen=chessBoard.fen(),
-    )
-
     await ChatHistory.objects.acreate(
         game=game, role="user", content=f"{player}: {chessMove.uci()}"
     )
 
-    chessNode = chess.pgn.read_game(io.StringIO(game.pgn)).end()
-    chessNode.add_main_variation(chessMove)
+    content: str = ""
 
-    game.pgn = chessNode.game().accept(exporter)
+    if chessBoard.is_checkmate():
+        game.outcome = "1-0" if turn else "0-1"
+        content = (f"Checkmate! {player} wins by {game.outcome}.",)
+    elif chessBoard.is_stalemate():
+        game.outcome = "1/2-1/2"
+        content = (f"Stalemate! {player} draws by {game.outcome}.",)
+    elif chessBoard.is_insufficient_material():
+        game.outcome = "1/2-1/2"
+        content = (f"Insufficient material! {player} draws by {game.outcome}.",)
+    elif chessBoard.is_seventyfive_moves():
+        game.outcome = "1/2-1/2"
+        content = (f"Seventy-five moves! {player} draws by {game.outcome}.",)
+    elif chessBoard.is_fivefold_repetition():
+        game.outcome = "1/2-1/2"
+        content = (f"Fivefold repetition! {player} draws by {game.outcome}.",)
+    elif chessBoard.is_variant_draw():
+        game.outcome = "1/2-1/2"
+        content = (f"Variant draw! {player} draws by {game.outcome}.",)
+    elif chessBoard.is_game_over():
+        game.outcome = "1/2-1/2"
+        content = (f"Game over! {player} draws by {game.outcome}.",)
+
+    try:
+        chessGame = chess.pgn.read_game(io.StringIO(game.pgn))
+        chessGame.end().add_main_variation(move)
+        game.pgn = chessGame.accept(exporter)
+    except Exception as e:
+        ## TODO: Fix this error!
+        content = str(e)
+
     game.fen = chessBoard.fen()
-
     await game.asave()
+
+    moveObj = await Move.objects.acreate(
+        game=game,
+        outcome=content,
+        uci=move,
+        san=san,
+        ply=chessBoard.ply() - 1,
+        fen=chessBoard.fen(),
+    )
+
     return moveObj
 
 
@@ -291,7 +319,7 @@ def post_chess_next(request, game_id):
     msgs.append(
         {
             "role": "system",
-            "content": "Generate a move in UCI format, e.g. 'e2e4' or 'e7e8q'. No other text is allowed.",
+            "content": "Respond with next move in UCI format, e.g. 'e2e4' or 'e7e8q'. No other text is allowed.",
         }
     )
 
@@ -300,7 +328,7 @@ def post_chess_next(request, game_id):
     msgs.append({"role": "assistant", "content": "PGN: " + game.pgn})
 
     legal_moves = [x.uci() for x in chess.Board(game.fen).legal_moves]
-    msgs.append({"role": "assistant", "content": "Legal moves: " + str(legal_moves)})
+    msgs.append({"role": "user", "content": "Choose one: " + str(legal_moves)})
 
     completion = openai.ChatCompletion.create(
         model="gpt-3.5-turbo-0613",

@@ -21,9 +21,14 @@ class Game(models.Model):
 
 class Move(models.Model):
     game = models.ForeignKey(Game, on_delete=models.CASCADE)
-    turn = models.BooleanField(default=True)
+    outcome = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Outcome of this move, if any.",
+        default="",
+    )
     ply = models.IntegerField(
-        validators=[MinValueValidator(1), MaxValueValidator(150)],
+        validators=[MinValueValidator(0), MaxValueValidator(150)],
         help_text="Half-play count (even = white, odd = black).",
     )
     uci = models.CharField(max_length=10, help_text="Universal Chess Interface.")

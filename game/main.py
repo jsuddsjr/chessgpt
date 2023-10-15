@@ -1,3 +1,4 @@
+import re
 import arcade
 import arcade.gui
 import chess
@@ -42,7 +43,7 @@ SCREEN_WIDTH = SPRITE_SIZE * SCREEN_GRID_WIDTH
 SCREEN_HEIGHT = SPRITE_SIZE * SCREEN_GRID_HEIGHT
 
 CHAT_BORDER = 2
-CHAT_HEIGHT = SCREEN_HEIGHT - CHAT_BORDER * 2
+CHAT_HEIGHT = SCREEN_HEIGHT - CHAT_BORDER * 6
 CHAT_WIDTH = SCREEN_GRID_WIDTH * 18
 CHAT_BOX_HEIGHT = SCREEN_GRID_HEIGHT * 3
 CHAT_BUTTON_WIDTH = SCREEN_GRID_WIDTH * 3
@@ -84,6 +85,8 @@ class ChessGame(arcade.Window):
             multiline=True,
         )
 
+        self.chat_box_active = False
+
         self.chat_button = arcade.gui.UIFlatButton(
             width=CHAT_BUTTON_WIDTH,
             height=CHAT_BOX_HEIGHT,
@@ -112,6 +115,8 @@ class ChessGame(arcade.Window):
             )
         )
 
+        self.manager.on_key_press = self.set_chat_box_active
+
         self.board: Board = Board(
             arcade.NamedPoint(
                 CHAT_WIDTH + (SCREEN_WIDTH - CHAT_WIDTH) // 2, SCREEN_HEIGHT // 2
@@ -126,6 +131,11 @@ class ChessGame(arcade.Window):
     #####################################################################
     # Chat helpers
     #####################################################################
+
+    def set_chat_box_active(self, key=None, modifiers=None):
+        """Set the chat box active"""
+        LOG.info("Chat box active")
+        self.chat_box_active = True
 
     def send_chat_text(self):
         """Send the chat box text"""
@@ -152,6 +162,7 @@ class ChessGame(arcade.Window):
     #####################################################################
 
     def on_api_error(self, err: ApiError):
+        """Display error messages from API"""
         LOG.info(f"Error message: {err.source} {err.status}")
         self.show_message_box(
             f"{err.source} returned '{err.message}' ({err.status})\nDid you start the ChessGPT service?",
@@ -178,17 +189,22 @@ class ChessGame(arcade.Window):
 
     def on_api_created(self, data: ApiGameCreated):
         """Respond to updates to game state"""
-        LOG.info(f"Game {data.id} created!")
+        self.append_chat(f"Game {data.id} created!")
         self.api.suggest_move()
         self.board.start(data.fen)
 
     def on_api_moved(self, data: ApiMove):
+        """Acknowledge move"""
         LOG.info(
-            f"Recorded uci {data.uci}, ply {data.ply}, san {data.san}, {data.turn} turn"
+            f"Recorded uci {data.uci}, ply {data.ply}, san {data.san}, {data.turn}d turn"
         )
-        self.append_chat(f"{ChessGame.PLAYERS[data.turn]}: {data.uci}")
+        self.append_chat(f"{ChessGame.PLAYERS[data.turn]} played {data.uci}")
+        self.board.update_fen(data.fen)
+        self.board.set_perspective(not data.turn)
         if data.turn == chess.BLACK:
             self.api.suggest_move()
+        else:
+            self.append_chat("Waiting for opponent...")
 
     def on_api_suggest(self, data: str):
         """Handle suggested move"""
@@ -198,15 +214,29 @@ class ChessGame(arcade.Window):
             # Check for valid UCI first
             _move = chess.Move.from_uci(data)
             if not self.board.execute_move(data):
-                self.send_chat("Oops, that move is illegal. Try again?")
-        except Exception:
-            # Otherwise, just display the chat message.
-            self.append_chat(data)
+                self.send_chat(f"Oops, {data} is not available.")
+        except chess.InvalidMoveError:
+            move = self.get_move_from_text(data)
+            if move is not None:
+                if not self.board.execute_move(move):
+                    self.send_chat(f"Oops, {move} didn't work.")
+            else:
+                # Otherwise, just display the chat message.
+                self.append_chat(data)
+                self.append_chat("Waiting for opponent...")
 
     def on_api_chat(self, data: str):
         """Display with chat message"""
         LOG.info(f"Chat message: {data}")
         self.append_chat(data)
+
+        move = self.get_move_from_text(data)
+        if move and self.board.is_valid_move(move):
+            self.board.execute_move(move)
+
+    def get_move_from_text(self, text: str) -> str:
+        matches = re.findall(r"(([a-h][1-8]){2}[qbnr]?)", text)
+        return matches[0][0] if len(matches) == 1 else None
 
     #####################################################################
     # Board event handlers
@@ -265,25 +295,30 @@ class ChessGame(arcade.Window):
             if self.dragging is not None:
                 self.board.reset_piece(self.dragging)
                 self.dragging = None
-        elif key == arcade.key.Q:
-            self.show_message_box(
-                "Are you sure you want to quit?",
-                ["Quit", "Cancel"],
-                lambda x: arcade.exit() if x == "Quit" else None,
-            )
-        elif key == arcade.key.R:
-            self.show_message_box(
-                "Are you sure you want to restart the game?",
-                ["Reset", "Cancel"],
-                lambda x: self.board.start() if x == "Reset" else None,
-            )
-            self.board.reset()
-        elif key == arcade.key.LEFT:
-            self.board.toggle_perspective()
+        elif not self.chat_box_active:
+            if key == arcade.key.Q:
+                self.show_message_box(
+                    "Are you sure you want to quit?",
+                    ["Quit", "Cancel"],
+                    lambda x: arcade.exit() if x == "Quit" else None,
+                )
+            elif key == arcade.key.R:
+                self.show_message_box(
+                    "Are you sure you want to restart the game?",
+                    ["Reset", "Cancel"],
+                    lambda x: self.board.start() if x == "Reset" else None,
+                )
+                self.board.reset()
+            elif key == arcade.key.LEFT:
+                self.board.toggle_perspective()
 
     def on_update(self, delta_time):
         """Movement and game logic"""
         self.board.update(delta_time)
+
+    def on_exit(self):
+        """Called when user exits the application"""
+        LOG.info("Exiting game...")
 
     #####################################################################
     # Utility functions

@@ -163,6 +163,11 @@ class Board(arcade.Shape):
                 )
             )
 
+        if self.angle > 0:
+            angle_rad = math.radians(self.angle)
+            for sprite in self.pieces:
+                sprite.rotate(angle_rad)
+
     def update_highlights(self, squares: chess.SquareSet = NO_SQUARES):
         self._highlights = arcade.SpriteList() if len(squares) > 0 else NO_SPRITES
         self._highlights.extra = squares
@@ -302,6 +307,13 @@ class Board(arcade.Shape):
     # Moves
     ############################
 
+    def update_fen(self, fen: str) -> None:
+        """Updates the board with the given FEN string."""
+        self.chess_board = chess.Board(fen)
+        self.update_pieces()
+        self.update_warnings()
+        self.update_highlights()
+
     def reset_piece(self, piece: Piece) -> None:
         """Resets the piece to its original position."""
         piece.position = self.center_of(piece.square)
@@ -317,18 +329,26 @@ class Board(arcade.Shape):
             return False
 
         player = self.chess_board.turn
-        self.chess_board.push(chess.Move(piece.square, square))
+        promotion = chess.QUEEN if self.is_promotion(piece, square) else None
+        self.chess_board.push(chess.Move(piece.square, square, promotion))
         self.set_perspective(self.chess_board.turn)
         self.update_pieces()
 
         # Look for warnings
-        if self.chess_board.is_check():
+        if self.chess_board.is_checkmate():
+            self.update_warnings(self.chess_board.checkers(), "checkmate")
+        elif self.chess_board.is_check():
             self.update_warnings(self.chess_board.checkers(), "check")
         else:
             self.update_warnings()
 
         self.on_player_move(player, self.chess_board.peek().uci())
         return True
+
+    def is_promotion(self, piece: Piece, square: chess.Square) -> bool:
+        """Returns True if the given move is a promotion."""
+        rank = chess.square_rank(square)
+        return piece.piece.piece_type == chess.PAWN and (rank == 0 or rank == 7)
 
     def execute_move(self, uci: str) -> bool:
         """Moves a piece to the given screen coordinates. Returns True if the move was valid."""

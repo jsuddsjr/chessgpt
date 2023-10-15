@@ -6,11 +6,11 @@ from classes.EventSource import EventSource
 
 API_BASEURL = "http://localhost:8000"
 
-API_GET_HELLO = API_BASEURL + "/api/hello"
-API_POST_CREATE_GAME = API_BASEURL + "/api/chess"
-API_POST_SAVE_MOVE = API_BASEURL + "/api/chess/{id}/move/{move}"
-API_GET_SUGGEST_MOVE = API_BASEURL + "/api/chat/{id}/suggest"
-API_GET_CHAT = API_BASEURL + "/api/chat/{id}?message={message}"
+API_GET_HELLO = "/api/hello"
+API_POST_CREATE_GAME = "/api/chess"
+API_POST_SAVE_MOVE = "/api/chess/{id}/move/{move}"
+API_GET_SUGGEST_MOVE = "/api/chat/{id}/suggest"
+API_GET_CHAT = "/api/chat/{id}?message={message}"
 
 
 class ApiError:
@@ -59,7 +59,7 @@ class ApiMove:
 
     @property
     def turn(self) -> int:
-        return self.data["turn"]
+        return (self.data["ply"] + 1) % 2
 
 
 class ChatGptApi(object):
@@ -67,7 +67,9 @@ class ChatGptApi(object):
         self.game_data: ApiGameCreated = None
 
         self.loop = asyncio.new_event_loop()
-        threading.Thread(target=self.loop.run_forever).start()
+        self.thread: threading.Thread = threading.Thread(target=self.loop.run_forever)
+        self.thread.daemon = True
+        self.thread.start()
 
         self.on_api_hello = EventSource("on_api_hello")
         self.on_api_error = EventSource("on_api_error")
@@ -139,7 +141,9 @@ class ChatGptApi(object):
     async def _invoke(self, method: str, url: str, callback: callable, json=None):
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.request(method, url, json=json) as response:
+                async with session.request(
+                    method, API_BASEURL + url, json=json
+                ) as response:
                     if response.status == 200:
                         if response.content_type == "application/json":
                             data = await response.json()
