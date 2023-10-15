@@ -32,15 +32,13 @@ class EventSource:
         """Create a new event dispatcher."""
         self.__name = name
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args):
         """Queue the event on the main message loop."""
         dispatcher = EventSource.get_dispatcher()
         if dispatcher is None:
             raise RuntimeError("No dispatcher set.")
         try:
-            pyglet.app.platform_event_loop.post_event(
-                dispatcher, self.__name, *args, **kwargs
-            )
+            pyglet.app.platform_event_loop.post_event(dispatcher, self.__name, *args)
         except Exception as e:
             print(f"Error dispatching event {self.__name}: {e}")
             raise e

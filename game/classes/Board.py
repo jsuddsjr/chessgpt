@@ -29,6 +29,10 @@ TEXT_COLOR: Color = arcade.color.WHITE
 
 ROTATE_SPEED = 135  ## degrees per second
 ALPHA_SPEED = 127  ## alpha per second
+PIECE_SPEED = 10  ## pixels per second
+
+NO_SPRITES = arcade.SpriteList()
+NO_SQUARES = chess.SquareSet()
 
 
 class Board(arcade.Shape):
@@ -38,21 +42,26 @@ class Board(arcade.Shape):
 
     def __init__(
         self,
-        fen: str = chess.STARTING_FEN,
         center: NamedPoint = CENTER_PT,
-        scale: float = 1.0,  # NOT_USED
     ):
         """Creates a new board with the given FEN string."""
 
-        self.texture = None
-        self.scale = 1.0
+        # Create the board background
+        self.texture = arcade.load_texture("assets/board.jpg")
+        self.scale = BOARD_WIDTH / self.texture.width
 
-        self.chess_board = chess.Board(fen)
-        self.squares: arcade.ShapeElementList = None
-        self.labels: arcade.SpriteList[arcade.Sprite] = None
-        self.pieces: arcade.SpriteList[Piece] = None
-        self._highlights: arcade.SpriteList[arcade.Sprite] = None
-        self._warnings: arcade.SpriteList[arcade.Sprite] = None
+        ## Static sprites.
+        self.chess_board: chess.Board = None
+        self.squares: arcade.ShapeElementList = arcade.ShapeElementList()
+        self.labels: arcade.SpriteList[arcade.Sprite] = NO_SPRITES
+        self.pieces: arcade.SpriteList[Piece] = NO_SPRITES
+        self._highlights: arcade.SpriteList[arcade.Sprite] = NO_SPRITES
+        self._warnings: arcade.SpriteList[arcade.Sprite] = NO_SPRITES
+        self._checkers: arcade.SpriteList[arcade.Sprite] = NO_SPRITES
+
+        ## Highlighted squares are stored in the extra property.
+        self._highlights.extra = NO_SQUARES
+        self._warnings.extra = NO_SQUARES
 
         ## Board will rotate until it reaches the target angle.
         self.perspective = chess.WHITE
@@ -68,21 +77,26 @@ class Board(arcade.Shape):
 
         ## Events
 
-        self.on_player_move = EventSource('on_player_move')
-        self.on_board_undo = EventSource('on_board_undo')
+        self.on_player_move = EventSource("on_player_move")
+        self.on_board_undo = EventSource("on_board_undo")
 
-        self.create_board()
-        self.create_labels()
-        self.reset()
+    def start(self, fen):
+        """The board isn't visible until you start a game."""
+        if (self.chess_board is None) or (self.chess_board.starting_fen() != fen):
+            self.chess_board = chess.Board(fen)
+            self.create_board()
+            self.create_labels()
+        else:
+            self.chess_board.reset()
+
+        self.update_pieces()
+        self.update_warnings()
+        self.update_highlights()
 
     def create_board(self):
         self.squares = arcade.ShapeElementList()
         self.squares.center_x = self.center.x
         self.squares.center_y = self.center.y
-
-        # Create the board background
-        self.texture = arcade.load_texture("assets/board.jpg")
-        self.scale = BOARD_WIDTH / self.texture.width
 
         self.squares.append(
             arcade.create_rectangle_filled(
@@ -149,13 +163,11 @@ class Board(arcade.Shape):
                 )
             )
 
-    def update_highlights(
-        self, highlighted_squares: chess.SquareSet = chess.SquareSet()
-    ):
-        self._highlights = arcade.SpriteList()
-        self._highlights.extra = highlighted_squares
+    def update_highlights(self, squares: chess.SquareSet = NO_SQUARES):
+        self._highlights = arcade.SpriteList() if len(squares) > 0 else NO_SPRITES
+        self._highlights.extra = squares
 
-        for square in list(highlighted_squares):
+        for square in list(squares):
             solid = SpriteSolidColor(SQUARE_SIZE, SQUARE_SIZE, arcade.color.YELLOW)
             solid.position = self.center_of(square)
             solid.alpha = 127
@@ -170,29 +182,23 @@ class Board(arcade.Shape):
 
     def update_warnings(
         self,
-        warning_squares: chess.SquareSet = chess.SquareSet(),
-        warning_type: str = "check",
+        squares: chess.SquareSet = NO_SQUARES,
+        text: str = "",
     ):
-        self._warnings = arcade.SpriteList()
-        self._warnings.extra = warning_squares
+        self._warnings = arcade.SpriteList() if len(squares) > 0 else NO_SPRITES
+        self._warnings.extra = squares
 
-        for square in list(warning_squares):
+        for square in list(squares):
             solid = arcade.SpriteCircle(SQUARE_SIZE // 2, arcade.color.RED, True)
             solid.position = self.center_of(square)
             self._warnings.append(solid)
             self._warnings.append(
                 self._create_text_sprite(
-                    warning_type,
+                    text,
                     NamedPoint(solid.position[0], solid.position[1]),
                     arcade.color.BLACK,
                 )
             )
-
-    def reset(self):
-        self.chess_board.reset()
-        self.update_highlights()
-        self.update_pieces()
-        self.update_warnings()
 
     def update(self, delta_time: float):
         self.rotate_board()
@@ -303,6 +309,8 @@ class Board(arcade.Shape):
 
     def move_piece(self, piece: Piece, square: chess.Square) -> bool:
         """Moves a piece to the given square. Returns True if the move was valid."""
+        self.update_highlights()
+
         if not self.is_valid_move(piece, square):
             # Return to original position.
             piece.position = self.center_of(piece.square)
@@ -319,18 +327,18 @@ class Board(arcade.Shape):
         else:
             self.update_warnings()
 
-        self.on_player_move(player=player, move=self.chess_board.peek().uci())
+        self.on_player_move(player, self.chess_board.peek().uci())
         return True
 
     def execute_move(self, uci: str) -> bool:
         """Moves a piece to the given screen coordinates. Returns True if the move was valid."""
         move = chess.Move.from_uci(uci)
         piece = self.piece_at(move.from_square)
-        self.move_piece(piece, move.to_square)
+        return False if piece is None else self.move_piece(piece, move.to_square)
 
     def piece_at(self, square: chess.Square) -> Piece:
-        """Returns the piece at the given square."""
-        return self.pieces.find(lambda sprite: sprite.square == square)
+        """Returns the piece at the given square, or None."""
+        return next(filter(lambda sprite: sprite.square == square, self.pieces), None)
 
     def is_valid_move(self, piece: Piece, square: chess.Square) -> bool:
         """Returns True if the given move is valid."""
@@ -349,9 +357,9 @@ class Board(arcade.Shape):
         if (len(self.chess_board.move_stack)) == 0:
             return
 
-        self.chess_board.pop()
+        removed = self.chess_board.pop()
         self.set_perspective(self.chess_board.turn)
-        self.on_board_undo(player=self.chess_board.turn)
+        self.on_board_undo(player=self.chess_board.turn, move=removed.uci())
 
     def show_attackers_of(self, x: int, y: int) -> None:
         """Highlights all squares that threaten the given square."""
