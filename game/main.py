@@ -196,34 +196,47 @@ class ChessGame(arcade.Window):
     def on_api_moved(self, data: ApiMove):
         """Acknowledge move"""
         LOG.info(
-            f"Recorded uci {data.uci}, ply {data.ply}, san {data.san}, {data.turn}d turn"
+            f"Recorded uci {data.uci}, ply {data.ply}, san {data.san}, player{int(data.turn)}"
         )
+
         self.append_chat(f"{ChessGame.PLAYERS[data.turn]} played {data.uci}")
-        self.board.update_fen(data.fen)
-        self.board.set_perspective(not data.turn)
-        if data.turn == chess.BLACK:
-            self.api.suggest_move()
+        self.board.update_fen(data.fen) ## Update the board state from server.
+
+        if data.outcome:
+            self.send_chat(data.outcome)
+            self.show_message_box(
+                data.outcome,
+                ["Reset", "Quit"],
+                lambda x: self.api.create_game() if x == "Reset" else arcade.exit(),
+            )
         else:
-            self.append_chat("Waiting for opponent...")
+            self.board.set_perspective(not data.turn)
+            if data.turn == chess.BLACK:
+                self.api.suggest_move()
+            else:
+                self.append_chat("Waiting for opponent...")
 
     def on_api_suggest(self, data: str):
         """Handle suggested move"""
         LOG.info(f"Suggested: {data}")
+
+        turn = f"{ChessGame.PLAYERS[self.board.turn]}'s turn."
+
         ## Suggested moves aren't official until we execute them.
         try:
             # Check for valid UCI first
             _move = chess.Move.from_uci(data)
             if not self.board.execute_move(data):
-                self.send_chat(f"Oops, {data} is not available.")
+                self.send_chat(f"Oops, move '{data}' isn't available. {turn}")
         except chess.InvalidMoveError:
             move = self.get_move_from_text(data)
             if move is not None:
                 if not self.board.execute_move(move):
-                    self.send_chat(f"Oops, {move} didn't work.")
+                    self.send_chat(f"Oops, {move} didn't work. {turn}")
             else:
                 # Otherwise, just display the chat message.
                 self.append_chat(data)
-                self.append_chat("Waiting for opponent...")
+                self.append_chat(turn)
 
     def on_api_chat(self, data: str):
         """Display with chat message"""
@@ -264,6 +277,7 @@ class ChessGame(arcade.Window):
         arcade.finish_render()
 
     def on_mouse_motion(self, x: int, y: int, dx: int, dy: int):
+        """Move the piece, if dragging one."""
         if self.dragging is not None:
             self.dragging.position = (x, y)
             self.board.show_attackers_of(x, y)
@@ -271,6 +285,7 @@ class ChessGame(arcade.Window):
             self.board.highlight_square_at(x, y)
 
     def on_mouse_press(self, x: int, y: int, button: int, modifiers: int):
+        """Pick up a piece, if available."""
         pieces: List[Piece] = arcade.get_sprites_at_point((x, y), self.board.pieces)
         if len(pieces) > 0 and pieces[0].piece.color == self.board.chess_board.turn:
             self.dragging = pieces[0]
@@ -280,6 +295,7 @@ class ChessGame(arcade.Window):
             self.board.highlights = self.board.legal_moves(self.dragging)
 
     def on_mouse_release(self, x: int, y: int, button: int, modifiers: int):
+        """Drop the piece, if we are holding one."""
         if self.dragging is not None:
             square = self.board.square_at(x, y)
             self.board.move_piece(self.dragging, square)
@@ -287,29 +303,39 @@ class ChessGame(arcade.Window):
 
     def on_key_press(self, key, modifiers):
         """Called whenever a key is pressed."""
-        if key == arcade.key.ENTER:
-            self.send_chat_text()
-        if key == arcade.key.Z and modifiers & arcade.key.MOD_CTRL:
-            self.board.undo_move
-        elif key == arcade.key.ESCAPE:
+
+        ## Escape to cancel drag
+        if key == arcade.key.ESCAPE:
             if self.dragging is not None:
                 self.board.reset_piece(self.dragging)
                 self.dragging = None
-        elif not self.chat_box_active:
+
+        elif modifiers & arcade.key.MOD_CTRL:
+            ## Ctrl+ENTER to send text
+            if key == arcade.key.ENTER:
+                self.send_chat_text()
+            ## Ctrl+Z to undo last move
+            elif key == arcade.key.Z:
+                self.board.undo_move
+
+        elif modifiers & arcade.key.MOD_ALT:
+            ## Alt+Q to quit
             if key == arcade.key.Q:
                 self.show_message_box(
                     "Are you sure you want to quit?",
                     ["Quit", "Cancel"],
                     lambda x: arcade.exit() if x == "Quit" else None,
                 )
+            ## Alt+R to restart game
             elif key == arcade.key.R:
                 self.show_message_box(
-                    "Are you sure you want to restart the game?",
+                    "Are you sure you want to start a new game?",
                     ["Reset", "Cancel"],
-                    lambda x: self.board.start() if x == "Reset" else None,
+                    lambda x: self.api.create_game() if x == "Reset" else None,
                 )
-                self.board.reset()
-            elif key == arcade.key.LEFT:
+
+        elif modifiers & arcade.key.MOD_SHIFT:
+            if key == arcade.key.LEFT:
                 self.board.toggle_perspective()
 
     def on_update(self, delta_time):

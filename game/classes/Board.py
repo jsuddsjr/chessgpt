@@ -79,6 +79,7 @@ class Board(arcade.Shape):
 
         self.on_player_move = EventSource("on_player_move")
         self.on_board_undo = EventSource("on_board_undo")
+        self.on_board_reset = EventSource("on_board_reset")
 
     def start(self, fen):
         """The board isn't visible until you start a game."""
@@ -88,6 +89,7 @@ class Board(arcade.Shape):
             self.create_labels()
         else:
             self.chess_board.reset()
+            self.set_perspective(chess.WHITE)
 
         self.update_pieces()
         self.update_warnings()
@@ -226,6 +228,10 @@ class Board(arcade.Shape):
     @property
     def height(self) -> int:
         return BOARD_WIDTH
+
+    @property
+    def turn(self) -> int:
+        return self.chess_board.turn
 
     ############################
     # Coordinates

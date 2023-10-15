@@ -61,15 +61,21 @@ class ApiMove:
     def turn(self) -> int:
         return (self.data["ply"] + 1) % 2
 
+    @property
+    def outcome(self) -> str:
+        return self.data["outcome"]
+
 
 class ChatGptApi(object):
     def __init__(self):
         self.game_data: ApiGameCreated = None
 
         self.loop = asyncio.new_event_loop()
-        self.thread: threading.Thread = threading.Thread(target=self.loop.run_forever)
-        self.thread.daemon = True
-        self.thread.start()
+
+        ## Start a new thread that will exit when the main thread ends (daemon=True)
+        threading.Thread(
+            target=self.loop.run_forever, daemon=True, name="ChatGptApi"
+        ).start()
 
         self.on_api_hello = EventSource("on_api_hello")
         self.on_api_error = EventSource("on_api_error")

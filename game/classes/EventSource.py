@@ -5,8 +5,6 @@ import pyglet
 class EventSource:
     r"""
     A class that can be used to dispatch events to the window from another thread.
-    There could be a better way, but I didn't have time to figure it out. (JWS)
-
     Note that you must register your custom events with pyglet before using this class.
 
     Example:

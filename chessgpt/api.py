@@ -86,7 +86,7 @@ def get_chess_games(request):
 @api.post(
     "/chess",
     tags=["games"],
-    response={200: GameModelSchema, 400: ErrorSchema},
+    response={200: GameModelSchema, 400: ErrorSchema, 500: str},
     summary="Create a new chess game.",
 )
 async def post_chess_game(request, payload: GameRequestModel, event: str = None):
@@ -195,40 +195,42 @@ async def post_chess_next_move(request, game_id: int, move: str):
         return 400, {"error": str(e1)}
 
     await ChatHistory.objects.acreate(
-        game=game, role="user", content=f"{player}: {chessMove.uci()}"
+        game=game, role="user", content=f"{player} plays {chessMove.uci()}"
     )
 
     content: str = ""
-
     if chessBoard.is_checkmate():
         game.outcome = "1-0" if turn else "0-1"
-        content = (f"Checkmate! {player} wins by {game.outcome}.",)
+        content = f"Checkmate! {player} wins by {game.outcome}."
     elif chessBoard.is_stalemate():
         game.outcome = "1/2-1/2"
-        content = (f"Stalemate! {player} draws by {game.outcome}.",)
+        content = f"Stalemate! {player} draws by {game.outcome}."
     elif chessBoard.is_insufficient_material():
         game.outcome = "1/2-1/2"
-        content = (f"Insufficient material! {player} draws by {game.outcome}.",)
+        content = f"Insufficient material! {player} draws by {game.outcome}."
     elif chessBoard.is_seventyfive_moves():
         game.outcome = "1/2-1/2"
-        content = (f"Seventy-five moves! {player} draws by {game.outcome}.",)
+        content = f"Seventy-five moves! {player} draws by {game.outcome}."
     elif chessBoard.is_fivefold_repetition():
         game.outcome = "1/2-1/2"
-        content = (f"Fivefold repetition! {player} draws by {game.outcome}.",)
+        content = f"Fivefold repetition! {player} draws by {game.outcome}."
     elif chessBoard.is_variant_draw():
         game.outcome = "1/2-1/2"
-        content = (f"Variant draw! {player} draws by {game.outcome}.",)
+        content = f"Variant draw! {player} draws by {game.outcome}."
     elif chessBoard.is_game_over():
         game.outcome = "1/2-1/2"
-        content = (f"Game over! {player} draws by {game.outcome}.",)
+        content = f"Game over! {player} draws by {game.outcome}."
 
     try:
+        ## I want save the current PGN state, but I'm getting errors.
+        ## It's possible to construct the PGN from Move objects, but
+        ## I haven't done it yet.
         chessGame = chess.pgn.read_game(io.StringIO(game.pgn))
         chessGame.end().add_main_variation(move)
         game.pgn = chessGame.accept(exporter)
     except Exception as e:
         ## TODO: Fix this error!
-        content = str(e)
+        pass
 
     game.fen = chessBoard.fen()
     await game.asave()
@@ -239,7 +241,7 @@ async def post_chess_next_move(request, game_id: int, move: str):
         uci=move,
         san=san,
         ply=chessBoard.ply() - 1,
-        fen=chessBoard.fen(),
+        fen=game.fen,
     )
 
     return moveObj
