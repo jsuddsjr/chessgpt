@@ -41,8 +41,10 @@ SCREEN_GRID_HEIGHT = 15
 SCREEN_WIDTH = SPRITE_SIZE * SCREEN_GRID_WIDTH
 SCREEN_HEIGHT = SPRITE_SIZE * SCREEN_GRID_HEIGHT
 
+CHAT_BORDER = 2
+CHAT_HEIGHT = SCREEN_HEIGHT - CHAT_BORDER * 2
 CHAT_WIDTH = SCREEN_GRID_WIDTH * 18
-CHAT_BOX_HEIGHT = SCREEN_GRID_HEIGHT * 2
+CHAT_BOX_HEIGHT = SCREEN_GRID_HEIGHT * 3
 CHAT_BUTTON_WIDTH = SCREEN_GRID_WIDTH * 3
 
 #####################################################################
@@ -90,13 +92,15 @@ class ChessGame(arcade.Window):
 
         self.chat_button.on_click = lambda x: self.send_chat_text()
 
-        h_box = arcade.gui.UIBoxLayout(vertical=False)
+        h_box = arcade.gui.UIBoxLayout(vertical=False, style={"spacing": 0})
         h_box.add(self.chat_box)
         h_box.add(self.chat_button)
 
-        v_box = arcade.gui.UIBoxLayout(vertical=True, align="left")
+        v_box = arcade.gui.UIBoxLayout(
+            vertical=True, align="left", style={"spacing": 0}
+        )
         v_box.add(self.chat_area)
-        v_box.add(h_box.with_border(1, arcade.color.WHITE))
+        v_box.add(h_box.with_border(CHAT_BORDER, arcade.color.WHITE))
 
         self.manager.add(
             arcade.gui.UIAnchorWidget(
@@ -150,7 +154,7 @@ class ChessGame(arcade.Window):
     def on_api_error(self, err: ApiError):
         LOG.info(f"Error message: {err.source} {err.status}")
         self.show_message_box(
-            f"HTTP{err.status} received. {err.message}\nDid you start the ChessGPT service?",
+            f"{err.source} returned '{err.message}' ({err.status})\nDid you start the ChessGPT service?",
             ["Quit", "OK"],
             lambda x: arcade.exit() if x == "Quit" else None,
         )
@@ -179,9 +183,12 @@ class ChessGame(arcade.Window):
         self.board.start(data.fen)
 
     def on_api_moved(self, data: ApiMove):
-        LOG.info(f"Recorded {data.uci} for player{data.player}")
-        ## TODO: Suggest only for ChatGPT's turn.
-        self.api.suggest_move()
+        LOG.info(
+            f"Recorded uci {data.uci}, ply {data.ply}, san {data.san}, {data.turn} turn"
+        )
+        self.append_chat(f"{ChessGame.PLAYERS[data.turn]}: {data.uci}")
+        if data.turn == chess.BLACK:
+            self.api.suggest_move()
 
     def on_api_suggest(self, data: str):
         """Handle suggested move"""
@@ -190,9 +197,7 @@ class ChessGame(arcade.Window):
         try:
             # Check for valid UCI first
             _move = chess.Move.from_uci(data)
-            if self.board.execute_move(data):
-                self.api.make_move(data)
-            else:
+            if not self.board.execute_move(data):
                 self.send_chat("Oops, that move is illegal. Try again?")
         except Exception:
             # Otherwise, just display the chat message.
@@ -204,11 +209,11 @@ class ChessGame(arcade.Window):
         self.append_chat(data)
 
     #####################################################################
-    # Game event handlers
+    # Board event handlers
     #####################################################################
 
-    def on_player_move(self, player: int, move: chess.Move):
-        LOG.info(f"Player {player} played {move} on board!")
+    def on_player_move(self, player: int, move: str):
+        LOG.info(f"Player{player} played {move} on board")
         self.api.make_move(move)
 
     def on_board_undo(self, player: int, move: str):
@@ -218,7 +223,7 @@ class ChessGame(arcade.Window):
         )
 
     #####################################################################
-    # Arcade event handlers
+    # Window event handlers
     #####################################################################
 
     def on_draw(self):

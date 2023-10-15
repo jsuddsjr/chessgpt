@@ -1,7 +1,7 @@
 from .models import Game, Move, ChatHistory
 from asgiref.sync import sync_to_async
 from django.contrib.auth.models import User
-from django.http import HttpResponseRedirect, HttpResponse
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import ModelSchema, Schema, NinjaAPI
@@ -11,7 +11,6 @@ import chess
 import chess.pgn
 import io
 import openai
-import requests
 
 api = NinjaAPI(title="ChessGPT API", description="API for ChessGPT.", version="0.1.0")
 
@@ -113,11 +112,6 @@ async def post_chess_game(request, payload: GameRequestModel, event: str = None)
         game = await Game.objects.acreate(pgn="*", **payload.dict())
 
         await ChatHistory.objects.acreate(
-            game=game,
-            role="system",
-            content="Generate chess moves in UCI format, e.g. 'e2e4' or 'e7e8q'. No other text is allowed.",
-        )
-        await ChatHistory.objects.acreate(
             game=game, role="user", content="White, what's your opening move?"
         )
 
@@ -175,34 +169,50 @@ async def post_chess_next_move(request, game_id: int, move: str):
     chessBoard = chess.Board(game.fen)
     chessMove = None
 
+    turn = chessBoard.turn
+    player = game.white if turn else game.black
+    san = None
+
     try:
         chessMove = chess.Move.from_uci(move)
+        if chessMove not in chessBoard.legal_moves:
+            return 400, {"error": f"Not a legal move: {move}"}
+        san = chessBoard.san(chessMove)
+        chessBoard.push(chessMove)
     except chess.InvalidMoveError:
         try:
+            san = move
             chessMove = chessBoard.push_san(move)
-        except Exception as e2:
-            return 400, {"error": str(e2)}
+        except chess.InvalidMoveError:
+            return 400, {
+                "error": f"Invalid move syntax: {move}. Try UCI or SAN format."
+            }
+        except chess.IllegalMoveError:
+            return 400, {"error": f"Not a legal move: {move}"}
+        except chess.AmbiguousMoveError as e2:
+            return 400, {"error": f"Ambiguous move: {move}"}
     except Exception as e1:
         return 400, {"error": str(e1)}
 
-    if chessMove not in chessBoard.legal_moves:
-        return 400, {"error": f"Not a legal move: {move}"}
-
     moveObj = await Move.objects.acreate(
         game=game,
+        turn=turn,
         uci=chessMove.uci(),
-        san=chessBoard.san(chessMove),
+        san=san,
         ply=chessBoard.ply(),
-        fen=game.fen,
+        fen=chessBoard.fen(),
     )
 
-    await ChatHistory.objects.acreate(game=game, role="user", content=chessMove.uci())
-    chessBoard.push(chessMove)
-    game.fen = chessBoard.fen()
+    await ChatHistory.objects.acreate(
+        game=game, role="user", content=f"{player}: {chessMove.uci()}"
+    )
 
     chessNode = chess.pgn.read_game(io.StringIO(game.pgn)).end()
     chessNode.add_main_variation(chessMove)
+
     game.pgn = chessNode.game().accept(exporter)
+    game.fen = chessBoard.fen()
+
     await game.asave()
     return moveObj
 
@@ -251,7 +261,13 @@ def get_chat(request, game_id: int, message: str) -> HttpResponse:
     hist = ChatHistory.objects.filter(game=game)
     msgs = [x.toMessage() for x in hist]
 
-    msgs.append({"role": "system", "content": "You are a lively conversationalist."})
+    msgs.append(
+        {
+            "role": "system",
+            "content": "You are an expert in chess history and strategy.",
+        }
+    )
+
     msgs.append({"role": "user", "content": message})
 
     completion = openai.ChatCompletion.create(
@@ -272,10 +288,16 @@ def post_chess_next(request, game_id):
     hist = ChatHistory.objects.filter(game=game)
     msgs = [x.toMessage() for x in hist]
 
+    msgs.append(
+        {
+            "role": "system",
+            "content": "Generate a move in UCI format, e.g. 'e2e4' or 'e7e8q'. No other text is allowed.",
+        }
+    )
+
     ## A few more messages to help GPT-3 understand the context.
-    ## msgs.append({"role": "assistant", "content": "FEN: " + game.fen})
+    msgs.append({"role": "assistant", "content": "FEN: " + game.fen})
     msgs.append({"role": "assistant", "content": "PGN: " + game.pgn})
-    msgs.append({"role": "user", "content": "What's the best next move?"})
 
     legal_moves = [x.uci() for x in chess.Board(game.fen).legal_moves]
     msgs.append({"role": "assistant", "content": "Legal moves: " + str(legal_moves)})

@@ -50,8 +50,16 @@ class ApiMove:
         return self.data["uci"]
 
     @property
-    def player(self) -> int:
+    def ply(self) -> int:
         return self.data["ply"]
+
+    @property
+    def san(self) -> str:
+        return self.data["san"]
+
+    @property
+    def turn(self) -> int:
+        return self.data["turn"]
 
 
 class ChatGptApi(object):
@@ -77,7 +85,7 @@ class ChatGptApi(object):
         asyncio.run_coroutine_threadsafe(self._hello(), self.loop)
 
     async def _hello(self):
-        await self._invoke("get", API_GET_HELLO, "hello", self.on_api_hello)
+        await self._invoke("get", API_GET_HELLO, self.on_api_hello)
 
     def create_game(self) -> str:
         """Create a new game"""
@@ -87,7 +95,6 @@ class ChatGptApi(object):
         await self._invoke(
             "post",
             API_POST_CREATE_GAME,
-            "create",
             self._save_game,
             json={"event": "ChessGPT"},
         )
@@ -104,7 +111,6 @@ class ChatGptApi(object):
         await self._invoke(
             "post",
             API_POST_SAVE_MOVE.format(id=self.id, move=move),
-            "move",
             lambda data: self.on_api_moved(ApiMove(data)),
         )
 
@@ -116,7 +122,6 @@ class ChatGptApi(object):
         await self._invoke(
             "get",
             API_GET_SUGGEST_MOVE.format(id=self.id),
-            "suggest",
             self.on_api_suggest,
         )
 
@@ -128,13 +133,10 @@ class ChatGptApi(object):
         await self._invoke(
             "get",
             API_GET_CHAT.format(id=self.id, message=message),
-            "chat",
             self.on_api_chat,
         )
 
-    async def _invoke(
-        self, method: str, url: str, source: str, callback: callable, json=None
-    ):
+    async def _invoke(self, method: str, url: str, callback: callable, json=None):
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.request(method, url, json=json) as response:
@@ -145,13 +147,22 @@ class ChatGptApi(object):
                         else:
                             data = await response.text()
                             callback(data)
+                    elif response.status == 400:
+                        error = await response.json()
+                        self.on_api_error(
+                            ApiError(
+                                source=url,
+                                status=response.status,
+                                message=error["error"],
+                            )
+                        )
                     else:
                         self.on_api_error(
-                            ApiError(source=source, status=response.status)
+                            ApiError(
+                                source=url,
+                                status=response.status,
+                                message=response.reason,
+                            )
                         )
         except Exception as e:
-            self.on_api_error(ApiError(source=source, message=str(e), status=500))
-
-    def test_error(self, message: str, status: int):
-        """Test error handling"""
-        self.on_api_error(ApiError(source=message, status=status))
+            self.on_api_error(ApiError(source=url, message=str(e), status=0))

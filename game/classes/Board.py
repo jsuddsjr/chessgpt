@@ -276,7 +276,7 @@ class Board(arcade.Shape):
         if self.angle < self.target_angle:
             self.angle += ROTATE_SPEED / 60  ## FPS
 
-        LOG.info(f"Rotating board to {self.angle} degrees")
+        LOG.debug(f"Rotating board to {self.angle} degrees")
 
         self.squares.angle = self.angle
         angle_rad = math.radians(self.angle)
@@ -415,7 +415,7 @@ class Board(arcade.Shape):
 
         self.alpha = max(0, min(self.target_alpha, self.alpha))
 
-        LOG.info(f"Animating alpha to {self.alpha}")
+        LOG.debug(f"Animating alpha to {self.alpha}")
 
         for sprite in self.labels:
             sprite.alpha = self.alpha
