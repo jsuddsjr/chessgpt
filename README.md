@@ -30,10 +30,7 @@ ChatGPT is not your typical AI chess opponent. The game is lousy, but the conver
 
 One more thing. The chat history proceeds backwards down the screen. I did this to keep the most recent messages easily in view without scrolling.
 
-
-> Chatting about a famous game.
->
->![Alt text](attachments/chatgpt_immortal_game.png)
+![Chatting about a famous game.](attachments/chatgpt_immortal_game.png)
 
 
 ## Multi-threading in Arcade
