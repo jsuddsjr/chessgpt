@@ -14,7 +14,7 @@ It's surprisingly easy to find chess games written with `pygame` on the web. (Ye
 
 Here's a link to my demo video, but read on if you want to learn more.
 
-[Software Demo Video](http://youtube.link.goes.here)
+[Software Demo Video](https://somup.com/c06DfHBgaP)
 
 ## Chatting with ChatGPT
 
