@@ -7,14 +7,22 @@
         "aiohttp",
         "antialiasing",
         "asgiref",
+        "asyncio",
         "chatapi",
+        "classmethod",
         "dotenv",
+        "isort",
         "Leitner",
         "levelname",
+        "mypy",
         "openai",
+        "pygame",
         "pyglet",
+        "Pylance",
         "pymongo",
+        "qbnr",
         "quizdata",
-        "quizgpt"
+        "quizgpt",
+        "stackoverflow"
     ]
 }

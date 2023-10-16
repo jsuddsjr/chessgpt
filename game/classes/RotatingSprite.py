@@ -4,7 +4,11 @@ import math
 
 class RotatingSprite(arcade.Sprite):
     def __init__(
-        self, filename, center: arcade.NamedPoint, offset: arcade.NamedPoint, scale=1
+        self,
+        filename: str,
+        center: arcade.NamedPoint,
+        offset: arcade.NamedPoint,
+        scale: float = 1,
     ):
         super().__init__(filename, scale)
         self.position = (center.x + offset.x, center.y + offset.y)

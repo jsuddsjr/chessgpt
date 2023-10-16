@@ -43,7 +43,7 @@ SCREEN_WIDTH = SPRITE_SIZE * SCREEN_GRID_WIDTH
 SCREEN_HEIGHT = SPRITE_SIZE * SCREEN_GRID_HEIGHT
 
 CHAT_BORDER = 2
-CHAT_HEIGHT = SCREEN_HEIGHT - CHAT_BORDER * 6
+CHAT_HEIGHT = SCREEN_HEIGHT - CHAT_BORDER * 10
 CHAT_WIDTH = SCREEN_GRID_WIDTH * 18
 CHAT_BOX_HEIGHT = SCREEN_GRID_HEIGHT * 3
 CHAT_BUTTON_WIDTH = SCREEN_GRID_WIDTH * 3
@@ -70,13 +70,6 @@ class ChessGame(arcade.Window):
 
         self.api: ChatGptApi = ChatGptApi()
 
-        self.chat_area = arcade.gui.UITextArea(
-            width=CHAT_WIDTH,
-            height=SCREEN_HEIGHT - CHAT_BOX_HEIGHT,
-            font_size=12,
-            text_color=arcade.color.WHITE,
-        )
-
         self.chat_box = arcade.gui.UIInputText(
             width=CHAT_WIDTH - CHAT_BUTTON_WIDTH,
             height=CHAT_BOX_HEIGHT,
@@ -85,7 +78,7 @@ class ChessGame(arcade.Window):
             multiline=True,
         )
 
-        self.chat_box_active = False
+        self.chat_box.caret.color = arcade.color.WHITE
 
         self.chat_button = arcade.gui.UIFlatButton(
             width=CHAT_BUTTON_WIDTH,
@@ -99,23 +92,32 @@ class ChessGame(arcade.Window):
         h_box.add(self.chat_box)
         h_box.add(self.chat_button)
 
+        self.chat_area = arcade.gui.UITextArea(
+            width=CHAT_WIDTH,
+            height=SCREEN_HEIGHT - CHAT_BOX_HEIGHT,
+            font_size=12,
+            text_color=arcade.color.WHITE,
+        )
+
         v_box = arcade.gui.UIBoxLayout(
             vertical=True, align="left", style={"spacing": 0}
         )
+        v_box.add(
+            h_box.with_border(CHAT_BORDER, arcade.color.WHITE).with_space_around(
+                bottom=10
+            )
+        )
         v_box.add(self.chat_area)
-        v_box.add(h_box.with_border(CHAT_BORDER, arcade.color.WHITE))
 
         self.manager.add(
             arcade.gui.UIAnchorWidget(
                 child=v_box,
                 anchor_x="left",
-                anchor_y="center",
+                anchor_y="top",
                 align_x=10,
                 align_y=0,
             )
         )
-
-        self.manager.on_key_press = self.set_chat_box_active
 
         self.board: Board = Board(
             arcade.NamedPoint(
@@ -132,11 +134,6 @@ class ChessGame(arcade.Window):
     # Chat helpers
     #####################################################################
 
-    def set_chat_box_active(self, key=None, modifiers=None):
-        """Set the chat box active"""
-        LOG.info("Chat box active")
-        self.chat_box_active = True
-
     def send_chat_text(self):
         """Send the chat box text"""
         message = self.chat_box.text.strip()
@@ -148,7 +145,10 @@ class ChessGame(arcade.Window):
         """Append a chat message"""
         if message == "":
             return
-        self.chat_area.text += f"\n\n{message}"
+
+        ## Add new messages at the top, so no scrolling is required.
+        ## TODO: Add color to distinguish player messages from API messages.
+        self.chat_area.text = f"{message}\n\n{self.chat_area.text}"
 
     def send_chat(self, message: str):
         """Send a chat message"""
@@ -200,7 +200,7 @@ class ChessGame(arcade.Window):
         )
 
         self.append_chat(f"{ChessGame.PLAYERS[data.turn]} played {data.uci}")
-        self.board.update_fen(data.fen) ## Update the board state from server.
+        self.board.update_fen(data.fen)  ## Update the board state from server.
 
         if data.outcome:
             self.send_chat(data.outcome)
@@ -260,7 +260,7 @@ class ChessGame(arcade.Window):
         self.api.make_move(move)
 
     def on_board_undo(self, player: int, move: str):
-        LOG.debug(f"Undoing last move...")
+        LOG.debug("Undoing last move...")
         self.api.chat(
             f"Oops. Ignore {move}. It's now {ChessGame.PLAYERS[player]}'s turn."
         )

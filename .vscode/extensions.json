@@ -1,12 +1,20 @@
 {
     "recommendations": [
+        "aaron-bond.better-comments",
         "batisteo.vscode-django",
+        "charliermarsh.ruff",
+        "donjayamanne.python-environment-manager",
         "formulahendry.auto-rename-tag",
+        "kevinrose.vsc-python-indent",
+        "marclipovsky.string-manipulation",
+        "mhutchie.git-graph",
+        "ms-python.black-formatter",
         "ms-python.isort",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
         "streetsidesoftware.code-spell-checker",
         "tamasfe.even-better-toml",
         "zaczero.bootstrap-v4-snippets",
-        "marclipovsky.string-manipulation",
-        "mhutchie.git-graph"
+        "zeshuaro.vscode-python-poetry",
     ]
 }

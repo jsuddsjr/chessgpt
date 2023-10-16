@@ -83,13 +83,13 @@ class Board(arcade.Shape):
 
     def start(self, fen):
         """The board isn't visible until you start a game."""
-        if (self.chess_board is None) or (self.chess_board.starting_fen() != fen):
+        if self.chess_board is None:
             self.chess_board = chess.Board(fen)
             self.create_board()
             self.create_labels()
         else:
-            self.chess_board.reset()
-            self.set_perspective(chess.WHITE)
+            self.chess_board.set_fen(fen)
+            self.set_perspective(self.chess_board.turn)
 
         self.update_pieces()
         self.update_warnings()
