@@ -9,7 +9,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 arcade = "^2.6.17"
 chess = "^1.10.0"
-Django = "^4.2.5"
+Django = "^4.2.7"
 django-ninja = "^0.22.2"
 mypy = "^1.5.1"
 openai = "^0.28.1"
