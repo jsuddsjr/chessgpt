@@ -361,13 +361,12 @@ files = [
 
 [[package]]
 name = "chess"
-version = "1.10.0"
+version = "1.11.1"
 description = "A chess library with move generation and validation, Polyglot opening book probing, PGN reading and writing, Gaviota tablebase probing, Syzygy tablebase probing, and XBoard/UCI engine communication."
 optional = false
-python-versions = ">=3.7"
+python-versions = ">=3.8"
 files = [
-    {file = "chess-1.10.0-py3-none-any.whl", hash = "sha256:48ff7c084a370811819cfc753c2ee159942356ada70824666bd01ee3fca170d0"},
-    {file = "chess-1.10.0.tar.gz", hash = "sha256:bccde105f54aa436e899f92b4ba953731c65012a863fd9235683d0e2863ccd54"},
+    {file = "chess-1.11.1.tar.gz", hash = "sha256:b7f66a32dc599ab260e2b688e6ac4e868dad840377a54b61357e2dec2a5fed00"},
 ]
 
 [[package]]
