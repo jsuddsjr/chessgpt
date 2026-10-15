@@ -7,7 +7,7 @@ license = "ISC"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-arcade = "^2.6.17"
+arcade = "^3.0.0"
 chess = "^1.10.0"
 Django = "^4.2.5"
 django-ninja = "^0.22.2"
